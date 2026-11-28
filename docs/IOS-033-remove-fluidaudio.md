@@ -3,7 +3,7 @@ name: IOS-033
 description: "Removes FluidAudio (and its 28 MB arm64 Rust NemoTextProcessing library) from iOS by running Silero VAD and SenseVoiceSmall on native Core ML with pure-Swift runners and GitHub Releases model delivery. Use when changing iOS dictation VAD, SenseVoiceSmall, or FluidAudio."
 metadata:
   created: "2026-11-27"
-  updated: "2026-11-27"
+  updated: "2026-11-28"
 ---
 
 # IOS-033: Native Core ML Silero VAD and SenseVoiceSmall (remove FluidAudio)
@@ -32,6 +32,10 @@ After `IOS-031` removed `SherpaOnnxC`, `FluidAudio` remained the only third-part
    - Remove `FluidAudio` from `ios/project.yml` and `ios/THIRD_PARTY_NOTICES.md`.
    - Reclaim legacy `FluidAudio` Hugging Face cache directories on disk so upgrading users recover storage.
    - `ios/project.yml` now has only one external Swift package (`GhosttyKit`).
+
+## Compute units
+
+`SenseVoiceSmall` runs on `.cpuOnly` on a device as on the simulator. On `.all`, Core ML compiles it for the GPU at the first phrase after each load (the model unloads a minute after the mic goes off), and measured natively on an Apple M2 Pro Mac that phrase took 17.5 s: a 14.5 s dictation showed no text until 18 s in, and finished 3.2 s after the mic at a 338 MB peak footprint. On the CPU a 4 s phrase takes 0.05 to 0.08 s and 17 s of speech 0.11 s, the first text shows 1.4 s in, and the same dictation finishes 0.14 s after the mic, at under 60 MB. See `IOS-031` (Latency) for Fun-ASR-Nano.
 
 ## Verification
 

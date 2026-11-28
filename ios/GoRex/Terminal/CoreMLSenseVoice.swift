@@ -7,6 +7,11 @@ actor CoreMLSenseVoice: Recogniser {
     static let maxFrames = 1800
     /// Query tokens: [language(0=auto), 1, 2, textnorm(14=withitn)].
     private static let queryIDs: [Int32] = [0, 1, 2, 14]
+    /// The CPU, on a device as on the simulator: `.all` compiles the model
+    /// for the GPU at the first phrase of each load, which then shows
+    /// nothing for 18 s on a Mac; on the CPU a phrase takes 0.1 s, in a
+    /// fifth of the memory (IOS-033).
+    static let computeUnits = MLComputeUnits.cpuOnly
 
     private let frontend = FbankFrontend()
     private let tokens: [String]
@@ -16,11 +21,7 @@ actor CoreMLSenseVoice: Recogniser {
         let tokData = try Data(contentsOf: dir.appending(path: "tokens.json"))
         self.tokens = try JSONDecoder().decode([String].self, from: tokData)
         let cfg = MLModelConfiguration()
-        #if targetEnvironment(simulator)
-        cfg.computeUnits = .cpuOnly
-        #else
-        cfg.computeUnits = .all
-        #endif
+        cfg.computeUnits = Self.computeUnits
         self.model = try MLModel(contentsOf: dir.appending(path: "SenseVoiceSmall.mlmodelc"), configuration: cfg)
     }
 

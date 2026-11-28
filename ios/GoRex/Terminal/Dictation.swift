@@ -490,8 +490,8 @@ import os
 
 /// One listening, as rootshell's DictationRecognizer, with its defaults:
 /// Silero VAD cuts what the mic hears into phrases as it comes; the phrase
-/// open is recognised again as it grows, for what is said so far, and once
-/// more as the speaker pauses, for good.
+/// open is recognised again as it grows while the mic is on, for what is
+/// said so far, and once more as the speaker pauses, for good.
 nonisolated final class Listening: Sendable {
     /// What is said so far, as it changes: the newest only.
     let said: AsyncStream<Dictation.Said>
@@ -560,7 +560,9 @@ nonisolated final class Listening: Sendable {
             let n = chunk.withUnsafeMutableBufferPointer { audio.read(into: UnsafeMutableBufferPointer(rebasing: $0[filled...])) }
             filled += n
             if filled == chunk.count {
-                try await ear.hear(chunk)
+                // With the mic off, what is left is settled, not guessed
+                // at: a guess there only keeps finish waiting.
+                try await ear.hear(chunk, guessing: !over)
                 filled = 0
             } else if over {
                 break
@@ -610,7 +612,7 @@ nonisolated final class Listening: Sendable {
             self.show = show
         }
 
-        mutating func hear(_ chunk: [Float]) async throws {
+        mutating func hear(_ chunk: [Float], guessing: Bool) async throws {
             let r = try await vad.processStreamingChunk(chunk, state: state, config: Self.pause)
             state = r.state
             if r.event?.kind == .speechStart, !speaking {
@@ -630,7 +632,7 @@ nonisolated final class Listening: Sendable {
                 try await settle(last: true)
             } else if speaking, phrase.count >= longest {
                 try await settle(last: false)
-            } else if speaking, heard >= every {
+            } else if guessing, speaking, heard >= every {
                 await guess()
             }
         }

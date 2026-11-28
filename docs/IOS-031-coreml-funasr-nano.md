@@ -1,9 +1,9 @@
 ---
 name: IOS-031
-description: "Runs Fun-ASR-Nano on iOS with Apple Core ML instead of sherpa-onnx, removing SherpaOnnxC (15 to 25 MB IPA) and running inference on the Neural Engine. Use when you change iOS dictation models, Core ML speech conversion, or SherpaOnnxC removal."
+description: "Runs Fun-ASR-Nano on iOS with Apple Core ML instead of sherpa-onnx, removing SherpaOnnxC (15 to 25 MB IPA), with the models resident on the CPU (Latency). Use when you change iOS dictation models, Core ML speech conversion, or SherpaOnnxC removal."
 metadata:
   created: "2026-11-27"
-  updated: "2026-11-27"
+  updated: "2026-11-28"
 ---
 
 # IOS-031: Core ML Fun-ASR-Nano for iOS dictation
@@ -68,6 +68,24 @@ All code lives in `ios/GoRex/Terminal/` with zero third-party C++ dependencies:
 ### Future Core ML TTS compatibility
 
 Because Core ML is part of iOS (`0 MB` binary overhead), adding on-device TTS later (such as Core ML Kokoro or Matcha, or FluidAudio's Core ML TTS) requires only adding a small Swift frontend + `.mlpackage` download without re-introducing ONNX Runtime or `SherpaOnnxC`.
+
+## Latency
+
+Dictation spun after the mic went off for minutes on a phone: `CoreMLFunASR` loaded `EncoderAdaptor` and `Qwen3Decoder` for each phrase on `.all` (staged after #1244 to keep both from being resident at once). Core ML compiles an `.all` model for the GPU at its first prediction, and a model loaded again compiles again. Measured natively on an Apple M2 Pro Mac with the release models, a 4 s phrase took 35 to 43 s (encoder's first prediction 19 to 29 s, decoder prefill 8 to 10 s), and a 14.5 s dictation with pauses, given in real time to `Listening`, finished 320 s after the mic went off.
+
+Fun-ASR-Nano now runs on `.cpuOnly` on a device as on the simulator, with all three models loaded once in `CoreMLFunASR.init` and kept while the recogniser is; each phrase takes a fresh `MLState` only. Measured on the same Mac, with the models resident:
+
+| Compute units | Load (encoder + decoder) | First phrase | Later phrases (encoder / prefill / token) | Footprint, peak |
+| --- | --- | --- | --- | --- |
+| `.cpuOnly` | 1.4 + 0.02 s (7.5 s once, cold) | as later | 0.1 s / 0.3 s / 0.12 to 0.18 s | 80 MB, 117 MB |
+| `.cpuAndNeuralEngine` | 30 s | as later | 0.05 s / 0.2 s / 0.13 s | 200 MB, 296 MB |
+| `.all` | 1.8 s | 32 s (GPU compile) | 0.05 s / 0.1 s / 0.04 s | 590 MB and growing, 601 MB |
+
+The CPU decodes as fast as the Neural Engine, loads 20 times faster and holds under half its memory; its footprint stays far below the 570 MB of weights, which stay mapped from disk. `.all` is fastest per token once compiled, but its compile is what the `MpsGraphValidator` crash of #1244 ran out of memory in, and its footprint grows past what an iPhone allows. With the fix, the same 14.5 s dictation finishes 2.0 s after the mic (1.5 s for 17 s of Chinese), at a peak footprint of 180 MB against 512 MB before.
+
+Two bounds go with it. A listening stops guessing once the mic is off: what is left in the ring is only settled, so finish waits for the last phrase, not for guesses at it. A phrase decodes at most one token per encoder frame (about 16 a second, past any speech rate), so a decode that loops on noise ends with the phrase, and a cancelled listening stops at the next token.
+
+`DictationTests.testListeningEndsSoonAfterTheMic` feeds real speech in real time through `Listening` and requires finish within 10 s of the mic going off; on the simulator, whose Core ML is slower than the Mac's, Fun-ASR-Nano takes 6 to 7 s and SenseVoice 0.4 to 0.6 s. A phone's CPU is not measured here.
 
 ## Alternatives
 
