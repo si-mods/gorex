@@ -495,13 +495,25 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 	for i, t := range w.layout.Tabs {
 		name, detail, prog := savedTabFace(t, infos)
 		s := a.st.savedTabStatus(t, id, infos)
-		ag, fade, rem, _ := savedTabAgentBadgeAt(now, t, infos)
+		ag, fade, rem, agOK := savedTabAgentBadgeAt(now, t, infos)
 		if spaceTabWithAgent(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, ag, fade, rem, s, reserve, func() {
-			ui.Box(c).Size(tileSlot, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
+			box := ui.Box(c).Size(tileSlot, tileH+4).Shrink(0)
+			if agOK {
+				box.Tooltip("Agent: " + ag)
+			}
+			box.Draw(func(p *ui.Painter, r ui.Rect) {
 				fr := ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}
 				drawTile(p, k, fr, prog, true)
+				_, curFade, _, stillAgent := savedTabAgentBadgeAt(p.Now(), t, infos)
 				if s != nil && s.State == "done" {
-					drawDoneDot(p, fr, k)
+					dx := float32(0)
+					if stillAgent {
+						dx = -8.5
+					}
+					drawDoneDotOffset(p, fr, k, dx)
+				}
+				if stillAgent {
+					drawAgentTileMark(p, fr, k, curFade)
 				}
 			})
 		}) {

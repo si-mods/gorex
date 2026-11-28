@@ -10,6 +10,9 @@ struct ProgramTiles: View {
     var state: String? = nil
     /// Whether a light page gets each tile a white ring behind it (ProgramTile).
     var plate = true
+    /// Optional host and window for the top-right agent corner mark on the front tile.
+    var host: Host? = nil
+    var window: SessionView.Window? = nil
 
     /// Points to a DIP of the desktop's tiles, which are 21×16.
     static let scale: CGFloat = 1.5
@@ -20,6 +23,7 @@ struct ProgramTiles: View {
     var body: some View {
         let k = Self.scale
         let done = state == "done"
+        let hasAgent = host != nil && window != nil && host?.windowAgentState(window!) != nil
         ZStack(alignment: .leading) {
             ForEach(Array(back.prefix(2).enumerated()).reversed(), id: \.offset) { i, p in
                 let inset = CGFloat(i + 1) * 0.8 * k
@@ -29,7 +33,13 @@ struct ProgramTiles: View {
             }
             ProgramTile(program: .of(front), plate: plate).frame(width: 21 * k, height: 16 * k)
                 .overlay(alignment: .topTrailing) {
-                    if done { DoneDot().offset(x: 2.5, y: -2.5) }
+                    if done { DoneDot().offset(x: hasAgent ? -9.5 : 2.5, y: -2.5) }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if let host, let window {
+                        AgentTileBadge(host: host, window: window)
+                            .offset(x: 3.5, y: -3.5)
+                    }
                 }
                 .tileBounce(state: state)
         }

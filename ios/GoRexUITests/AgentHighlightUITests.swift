@@ -114,6 +114,8 @@ final class AgentHighlightUITests: XCTestCase {
                       "expected agent VoiceOver label on Dashboard row, got: \(dashboardRow.label)")
         XCTAssertFalse(shellRow.label.contains("agent"),
                        "human Shell row must not carry agent VoiceOver label, got: \(shellRow.label)")
+        XCTAssertFalse(app.staticTexts["agent"].exists,
+                       "list rows must use the program tile corner icon mark rather than an 'agent' text pill")
 
         saveShot("\(prefix)-dark-list-after")
         saveText("\(prefix)-voiceover-list-dump", app.debugDescription)

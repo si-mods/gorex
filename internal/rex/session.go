@@ -992,7 +992,7 @@ func (s *session) dropLocked(a *attached) bool {
 func (s *session) input(a *attached, p []byte) {
 	if p := s.admit(a, p); len(p) > 0 {
 		s.write(p)
-		if a != nil && s.typed != nil && len(dropFocusReports(dropReplies(p))) > 0 {
+		if a != nil && s.typed != nil && HasHumanInputBytes(p) {
 			s.typed()
 		}
 	}
@@ -1032,12 +1032,17 @@ func (s *session) inputProgramWithActor(p []byte, actor, agent, parentSession, v
 		return nil
 	}
 	now := time.Now()
-	s.lastInput = now
+	humanTyped := HasHumanInputBytes(p)
+	if actor != ActorHuman || humanTyped {
+		s.lastInput = now
+	}
 	var takeover TakeoverEvent
 	var tookOver bool
 	if trackActor {
 		if actor == ActorHuman {
-			takeover, tookOver = s.takeOverLocked(cmp.Or(via, "paste"), now)
+			if humanTyped {
+				takeover, tookOver = s.takeOverLocked(cmp.Or(via, "paste"), now)
+			}
 		} else {
 			def := ActorCLI
 			if actor == ActorDelegate {
@@ -1062,7 +1067,7 @@ func (s *session) inputProgramWithActor(p []byte, actor, agent, parentSession, v
 		s.changed()
 	}
 	s.write(p)
-	if s.typed != nil {
+	if s.typed != nil && (actor != ActorHuman || humanTyped) {
 		s.typed()
 	}
 	return nil
@@ -1161,12 +1166,13 @@ func (s *session) plainText() string {
 // What the server types itself, a nil client's, goes as it is.
 func (s *session) admit(a *attached, p []byte) []byte {
 	typed := dropReplies(p)
+	humanTyped := HasHumanInputBytes(typed)
 	var takeover TakeoverEvent
 	var tookOver bool
 	s.sized(func() bool {
 		prev := s.authorityLocked()
 		now := time.Now()
-		if a != nil && len(dropFocusReports(typed)) > 0 {
+		if a != nil && humanTyped {
 			s.typist = a
 			takeover, tookOver = s.takeOverLocked("pty", now)
 		}
@@ -1185,17 +1191,6 @@ func (s *session) admit(a *attached, p []byte) []byte {
 		s.emitTakeover(takeover)
 	}
 	return p
-}
-
-// dropFocusReports returns p without the reports of the terminal's window
-// gaining or losing focus (CSI I, CSI O): a terminal sends them as its
-// window changes, without the user typing.
-func dropFocusReports(p []byte) []byte {
-	if bytes.IndexByte(p, 0x1b) < 0 {
-		return p
-	}
-	p = bytes.ReplaceAll(p, []byte("\x1b[I"), nil)
-	return bytes.ReplaceAll(p, []byte("\x1b[O"), nil)
 }
 
 // kill hangs up the session and waits a little for it to end.
@@ -1225,6 +1220,7 @@ func (s *session) info() SessionInfo {
 		DelegatedFrom: s.delegatedFrom, DelegatedAgent: s.delegatedAgent,
 		AgentActor: AgentActor{
 			CreatedBy:      cmp.Or(s.createdBy, ActorHuman),
+			CreatedAt:      s.created,
 			LastCLIInputAt: s.lastCLIInputAt,
 			Agent:          s.agentLabel,
 			Active:         s.agentActive && !s.exited,

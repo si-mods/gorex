@@ -647,8 +647,15 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.Program
 }
 
 func spaceTabWithAgent(c *ui.Context, k *colors, key, name, detail, agent string, agentFade float32, agentRem time.Duration, s *rex.ProgramStatus, reserve float32, tiles func()) bool {
+	if agent != "" && agentRem > 0 {
+		c.After(agentRem + 20*time.Millisecond)
+	}
+	lbl := name + " " + detail
+	if agent != "" {
+		lbl += " (operated by an agent)"
+	}
 	e := ui.Row(c.Key("tab-"+key)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(k, sidebarRowH(), k.radius(radiusM))).
-		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + " " + detail)
+		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(lbl)
 	if anim := motion(c); anim != nil {
 		e.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 	}
@@ -665,9 +672,6 @@ func spaceTabWithAgent(c *ui.Context, k *colors, key, name, detail, agent string
 		ui.Box(c).Grow(1).MinWidth(0).Height(18).Draw(func(p *ui.Painter, r ui.Rect) {
 			fadeText(p, r, tabLabel(name, detail, k.textMuted, k.textFaint))
 		})
-		if agent != "" {
-			agentBadge(c, k, agent, agentFade, agentRem)
-		}
 		if needsUser(s) || s != nil && s.State == "working" {
 			statusDot(c, k, s, 5.5).Label(statusTip(s))
 		}

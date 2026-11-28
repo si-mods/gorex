@@ -13,6 +13,12 @@ nonisolated struct AgentActor: Equatable, Sendable, Decodable {
     var tookOverAt: Date?
     var createdAt: Date?
 
+    /// Whether the session was created by an agent or CLI (`"cli"` or `"delegate"`)
+    /// rather than opened interactively by a person (`"human"`).
+    var isAgentCreated: Bool {
+        createdBy == "cli" || createdBy == "delegate"
+    }
+
     init(
         createdBy: String = "human",
         lastCliInputAt: Date? = nil,
@@ -155,6 +161,9 @@ enum AgentHighlight {
     /// Minimum interval between VoiceOver takeover announcements for the same pane.
     nonisolated static let announcementCooldown: TimeInterval = 2
 
+    /// SF Symbol rendered inside the circular corner mark on a program tile.
+    nonisolated static let badgeSymbol = "sparkles"
+
     /// Desktop dark-mode agent blue (`#6cb2ff` in `style.go`).
     nonisolated static let darkRGB: UInt32 = 0x6CB2FF
     /// Dark-mode color in OKLCH (`h ≈ 252.05°`).
@@ -166,14 +175,18 @@ enum AgentHighlight {
 
     /// Active highlight snapshot at a point in time.
     nonisolated struct State: Equatable, Sendable {
-        /// Compact inline pill text for list rows (`"agent"`).
-        let badgeText: String
-        /// Normalized agent name (`"cli"`, `"agy"`, etc.).
+        /// SF Symbol for the circular corner mark on the program tile (`"sparkles"`).
+        let symbolName: String
+        /// Normalized agent name (`"cli"`, `"agy"`, `"delegate"`, etc.).
         let agentName: String
-        /// Tail fade factor in `0...1` (`1` before 57 s, linear to `0` at 60 s).
+        /// Tail fade factor in `0...1` (`1` for persistent agent-created panes and before 57 s on human panes).
         let fade: Double
-        /// Remaining seconds until the 60 s window expires.
+        /// Remaining seconds until the 60 s window expires, or `.infinity` when persistent.
         let remaining: TimeInterval
+
+        /// True for agent-created panes (`createdBy` in `{"cli", "delegate"}`) with
+        /// `tookOverAt == nil`: the highlight stays resident without decaying over time.
+        var isPersistent: Bool { !remaining.isFinite }
     }
 
     /// Whether agent highlight rendering is enabled (`agentHighlight` default; true when unset).
@@ -188,7 +201,15 @@ enum AgentHighlight {
         UIAccessibility.isReduceMotionEnabled || UserDefaults.standard.bool(forKey: "reduceMotion")
     }
 
-    /// Evaluates whether a block's `AgentActor` should highlight at `now`.
+    /// Evaluates whether a block's `AgentActor` should highlight at `now`
+    /// (`docs/IOS-035-agent-highlight.md`):
+    /// 1. `createdBy` in `{"cli", "delegate"}` and `tookOverAt == nil`: highlight
+    ///    persists indefinitely (`remaining == .infinity`, `fade == 1.0`) across
+    ///    working, idle, and background transitions.
+    /// 2. Real human input sets `tookOverAt` (or local `cleared`), permanently
+    ///    clearing the highlight; session exit (`exited`) also clears it.
+    /// 3. `createdBy == "human"` with `lastCliInputAt != nil` uses the 60 s CLI
+    ///    idle window (`57s..60s` 3 s fade-out) for one-shot script writes.
     nonisolated static func state(
         actor: AgentActor?,
         exited: Bool = false,
@@ -196,22 +217,29 @@ enum AgentHighlight {
         enabled: Bool = true,
         now: Date = .now
     ) -> State? {
-        guard enabled, !exited, !cleared, let actor, actor.active else { return nil }
-        var ref = actor.lastCliInputAt
-        if !actor.createdBy.isEmpty, actor.createdBy != "human", let created = actor.createdAt {
-            if let cur = ref {
-                if created > cur { ref = created }
-            } else {
-                ref = created
-            }
+        guard enabled, !exited, !cleared, let actor, actor.active, actor.tookOverAt == nil else {
+            return nil
         }
-        guard let ref else { return nil }
+        let name = actor.agent ?? (actor.createdBy == "delegate" ? "delegate" : "cli")
+        if actor.isAgentCreated {
+            return State(
+                symbolName: badgeSymbol,
+                agentName: name,
+                fade: 1.0,
+                remaining: .infinity
+            )
+        }
+        guard let ref = actor.lastCliInputAt else { return nil }
         let age = max(0, now.timeIntervalSince(ref))
         guard age < windowDuration else { return nil }
         let rem = windowDuration - age
         let fade = rem < fadeDuration ? rem / fadeDuration : 1.0
-        let name = actor.agent ?? (actor.createdBy == "delegate" ? "delegate" : "cli")
-        return State(badgeText: "agent", agentName: name, fade: fade, remaining: rem)
+        return State(
+            symbolName: badgeSymbol,
+            agentName: name,
+            fade: fade,
+            remaining: rem
+        )
     }
 
     /// Whether the continuous breathing animation may run: reuses `ListMotion.runs`
@@ -276,9 +304,11 @@ enum AgentHighlight {
         return String(localized: "\(base), operated by an agent")
     }
 
-    /// Reports whether `bytes` carry human keyboard/paste input rather than
-    /// terminal query replies (`DA`, `CPR`, `DECRPM`, `OSC`), focus reports
-    /// (`CSI I`, `CSI O`), or pointer wheel/motion reports.
+    /// Reports whether `bytes` carry genuine human keyboard or paste input rather
+    /// than terminal query replies (`DA`, `CPR`, `DSR`, `DECRPM`, `XTWINOPS`,
+    /// `OSC`/`DCS`/`APC`), clipboard read denials (`OSC 5522` `EPERM`/`DONE`),
+    /// focus reports (`CSI I`, `CSI O`), pointer/mouse/wheel reports (`SGR`,
+    /// `URXVT`, `X10`), or Kitty key-release and modifier-only key events.
     nonisolated static func hasHumanInputBytes(_ bytes: Data) -> Bool {
         guard !bytes.isEmpty else { return false }
         let buf = [UInt8](bytes)
@@ -305,11 +335,18 @@ enum AgentHighlight {
         guard count - start >= 3, buf[start] == 0x1B else { return 0 }
         let second = buf[start + 1]
         switch second {
-        case 0x5D, 0x50, 0x5F: // ']', 'P', '_'
-            // Kitty clipboard paste (`ESC ] 5522 ;`) is real user paste input.
+        case 0x5D, 0x50, 0x5F, 0x5E, 0x58: // ']', 'P', '_', '^', 'X'
+            // Kitty clipboard (`ESC ] 5522 ;`) is human input only on paste offers
+            // or granted paste data (`type=paste`, `status=DATA`, `status=OK`);
+            // `status=EPERM` denials and `status=DONE` trailers are replies.
             let kitty: [UInt8] = [0x1B, 0x5D, 0x35, 0x35, 0x32, 0x32, 0x3B]
-            if count - start >= kitty.count && Array(buf[start..<(start + kitty.count)]) == kitty {
-                return 0
+            if second == 0x5D, count - start >= kitty.count, Array(buf[start..<(start + kitty.count)]) == kitty {
+                if hasPrefix(buf, from: start + kitty.count, ascii: "type=paste")
+                    || hasPrefix(buf, from: start + kitty.count, ascii: "type=read:status=DATA")
+                    || hasPrefix(buf, from: start + kitty.count, ascii: "type=read:status=OK")
+                {
+                    return 0
+                }
             }
             var i = start + 2
             while i < count {
@@ -326,27 +363,13 @@ enum AgentHighlight {
             }
             return 0
         case 0x5B: // '[' (CSI)
-            var i = start + 2
-            if i < count && buf[i] == 0x3C { // '<' SGR mouse: ESC [ < Cb ; Cx ; Cy M/m
-                var code = 0
-                var hasDigits = false
-                var j = i + 1
-                while j < count, buf[j] >= 0x30, buf[j] <= 0x39 {
-                    code = code * 10 + Int(buf[j] - 0x30)
-                    hasDigits = true
-                    j += 1
-                }
-                while j < count, (buf[j] >= 0x30 && buf[j] <= 0x39) || buf[j] == 0x3B {
-                    j += 1
-                }
-                if hasDigits, j < count, buf[j] == 0x4D || buf[j] == 0x6D {
-                    // Wheel (bit 64) or pointer motion (bit 32) or release ('m') does not take over.
-                    if (code & 64) != 0 || (code & 32) != 0 || buf[j] == 0x6D {
-                        return j - start + 1
-                    }
-                }
-                return 0
+            if let m = mouseReportLength(buf, from: start) {
+                return m
             }
+            if let k = kittyNonTypingKeyLength(buf, from: start) {
+                return k
+            }
+            var i = start + 2
             var mark: UInt8 = 0
             if i < count && (buf[i] == 0x3F || buf[i] == 0x3E) { // '?' or '>'
                 mark = buf[i]
@@ -372,6 +395,82 @@ enum AgentHighlight {
         default:
             return 0
         }
+    }
+
+    private nonisolated static func hasPrefix(_ buf: [UInt8], from start: Int, ascii: StaticString) -> Bool {
+        guard start + ascii.utf8CodeUnitCount <= buf.count else { return false }
+        return ascii.withUTF8Buffer { ptr in
+            for idx in 0..<ptr.count where buf[start + idx] != ptr[idx] {
+                return false
+            }
+            return true
+        }
+    }
+
+    private nonisolated static func mouseReportLength(_ buf: [UInt8], from start: Int) -> Int? {
+        let count = buf.count
+        guard count - start >= 6, buf[start] == 0x1B, buf[start + 1] == 0x5B else { return nil }
+        let third = buf[start + 2]
+        if third == 0x3C { // SGR mouse: ESC [ < Cb ; Cx ; Cy M/m
+            var j = start + 3
+            var digits = false
+            while j < count, (buf[j] >= 0x30 && buf[j] <= 0x39) || buf[j] == 0x3B {
+                if buf[j] >= 0x30 && buf[j] <= 0x39 { digits = true }
+                j += 1
+            }
+            if digits, j < count, buf[j] == 0x4D || buf[j] == 0x6D {
+                return j - start + 1
+            }
+            return nil
+        }
+        if third == 0x4D, buf[start + 3] >= 0x20, buf[start + 4] >= 0x21, buf[start + 5] >= 0x21 {
+            return 6 // X10 mouse: ESC [ M cb cx cy
+        }
+        var j = start + 2
+        var semis = 0
+        var digits = false
+        while j < count, (buf[j] >= 0x30 && buf[j] <= 0x39) || buf[j] == 0x3B {
+            if buf[j] == 0x3B { semis += 1 } else { digits = true }
+            j += 1
+        }
+        if digits, semis >= 2, j < count, buf[j] == 0x4D {
+            return j - start + 1 // URXVT mouse: ESC [ Cb ; Cx ; Cy M
+        }
+        return nil
+    }
+
+    private nonisolated static func kittyNonTypingKeyLength(_ buf: [UInt8], from start: Int) -> Int? {
+        let count = buf.count
+        guard count - start >= 4, buf[start] == 0x1B, buf[start + 1] == 0x5B else { return nil }
+        var code = 0
+        var hasCode = false
+        var j = start + 2
+        while j < count, buf[j] >= 0x30, buf[j] <= 0x39 {
+            code = code * 10 + Int(buf[j] - 0x30)
+            hasCode = true
+            j += 1
+        }
+        while j < count, (buf[j] >= 0x30 && buf[j] <= 0x39) || buf[j] == 0x3B || buf[j] == 0x3A {
+            j += 1
+        }
+        guard j < count else { return nil }
+        let f = buf[j]
+        guard f == 0x75 || f == 0x7E || (f >= 0x41 && f <= 0x5A) else { return nil }
+        let params = buf[(start + 2)..<j]
+        if let semi = params.firstIndex(of: 0x3B) {
+            let afterSemi = params[params.index(after: semi)...]
+            let modField = afterSemi.firstIndex(of: 0x3B).map { afterSemi[..<$0] } ?? afterSemi
+            if let colon = modField.firstIndex(of: 0x3A) {
+                let evType = modField[modField.index(after: colon)...]
+                if evType.count == 1, evType.first == 0x33 { // ':3' key release
+                    return j - start + 1
+                }
+            }
+        }
+        if f == 0x75, hasCode, (57441...57454).contains(code) {
+            return j - start + 1
+        }
+        return nil
     }
 }
 

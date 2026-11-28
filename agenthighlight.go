@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"cmp"
 	"math"
 	"time"
@@ -32,30 +31,42 @@ func (p *Pane) clearAgentLocal() {
 	if p == nil {
 		return
 	}
+	now := time.Now()
 	p.agentCleared = true
 	p.agentClearedAt = p.info.AgentActor.LastCLIInputAt
 	p.info.AgentActor.Active = false
+	if p.info.AgentActor.TookOverAt.IsZero() {
+		p.info.AgentActor.TookOverAt = now
+	}
 }
 
 // reconcileAgent updates the pane's local takeover latch against a fresh
 // SessionInfo poll from the server.
 func (p *Pane) reconcileAgent(in rex.SessionInfo) {
-	if !in.AgentActor.Active {
+	if !in.AgentActor.Active || !in.AgentActor.TookOverAt.IsZero() {
 		p.agentCleared = false
 		return
 	}
 	if !p.agentCleared {
 		return
 	}
-	if in.AgentActor.LastCLIInputAt.After(p.agentClearedAt) {
+	if !in.AgentActor.LastCLIInputAt.IsZero() && in.AgentActor.LastCLIInputAt.After(p.agentClearedAt) {
 		p.agentCleared = false
 		return
 	}
 	p.info.AgentActor.Active = false
+	if p.info.AgentActor.TookOverAt.IsZero() {
+		p.info.AgentActor.TookOverAt = time.Now()
+	}
+}
+
+func isAgentCreatedActor(createdBy string) bool {
+	return createdBy == rex.ActorCLI || createdBy == rex.ActorDelegate
 }
 
 // agentStateAt reports whether pane p should display the agent border and tab
-// badge at now, returning the badge label, fade factor (0..1), and time left.
+// badge at now, returning the badge label, fade factor (0..1), and time left
+// (0 when the highlight is persistent on an agent-created pane).
 func (p *Pane) agentStateAt(now time.Time) (label string, fade float32, rem time.Duration, ok bool) {
 	if !agentHighlightOn() || p == nil || p.closed || p.ext != nil || p.agentCleared {
 		return "", 0, 0, false
@@ -65,17 +76,24 @@ func (p *Pane) agentStateAt(now time.Time) (label string, fade float32, rem time
 
 func agentInfoStateAt(in rex.SessionInfo, now time.Time) (label string, fade float32, rem time.Duration, ok bool) {
 	act := in.AgentActor
-	if !act.Active || in.Exited {
+	if !act.Active || !act.TookOverAt.IsZero() || in.Exited {
 		return "", 0, 0, false
 	}
-	ref := act.LastCLIInputAt
-	if act.CreatedBy != "" && act.CreatedBy != rex.ActorHuman && in.Created.After(ref) {
-		ref = in.Created
+	label = cmp.Or(
+		rex.NormalizeAgentName(act.Agent),
+		rex.NormalizeAgentName(in.DelegatedAgent),
+		rex.ActorCLI,
+	)
+	// Agent-created panes (createdBy = "cli" or "delegate") stay highlighted
+	// permanently while tookOverAt is empty and the session has not exited.
+	if isAgentCreatedActor(act.CreatedBy) {
+		return label, 1, 0, true
 	}
-	if ref.IsZero() {
+	// Human-created panes touched by a script use the 60 s CLI idle fade window.
+	if act.LastCLIInputAt.IsZero() {
 		return "", 0, 0, false
 	}
-	age := max(now.Sub(ref), 0)
+	age := max(now.Sub(act.LastCLIInputAt), 0)
 	if age >= agentHighlightWindow {
 		return "", 0, 0, false
 	}
@@ -84,16 +102,21 @@ func agentInfoStateAt(in rex.SessionInfo, now time.Time) (label string, fade flo
 	if rem < agentFadeDuration {
 		fade = float32(rem) / float32(agentFadeDuration)
 	}
-	label = cmp.Or(
-		rex.NormalizeAgentName(act.Agent),
-		rex.NormalizeAgentName(in.DelegatedAgent),
-		rex.ActorCLI,
-	)
 	return label, fade, rem, true
 }
 
+func betterAgentRemaining(cand, cur time.Duration) bool {
+	if cand == 0 {
+		return cur != 0
+	}
+	if cur == 0 {
+		return false
+	}
+	return cand > cur
+}
+
 // agentBadgeAt returns the active agent badge for tab t at now, preferring the
-// focused pane when active and otherwise the most recently driven pane in t.
+// focused pane when active and otherwise a persistent or freshest pane in t.
 func (t *Tab) agentBadgeAt(now time.Time) (label string, fade float32, rem time.Duration, ok bool) {
 	if !agentHighlightOn() || t == nil {
 		return "", 0, 0, false
@@ -105,7 +128,7 @@ func (t *Tab) agentBadgeAt(now time.Time) (label string, fade float32, rem time.
 	}
 	for _, p := range t.allPanes() {
 		l, f, r, active := p.agentStateAt(now)
-		if active && (!ok || r > rem) {
+		if active && (!ok || betterAgentRemaining(r, rem)) {
 			label, fade, rem, ok = l, f, r, true
 		}
 	}
@@ -136,7 +159,7 @@ func savedTabAgentBadgeAt(now time.Time, t savedTab, infos map[string]rex.Sessio
 				continue
 			}
 			l, f, r, active := agentInfoStateAt(in, now)
-			if active && (!ok || r > rem) {
+			if active && (!ok || betterAgentRemaining(r, rem)) {
 				label, fade, rem, ok = l, f, r, true
 			}
 		}
@@ -163,8 +186,10 @@ func drawAgentPaneBorder(c *ui.Context, card ui.Element, k *colors, p *Pane, car
 		col = k.accent
 	}
 	animates := !unfocusedBreathing.Load() && motion(c) != nil
-	if !animates {
-		c.After(rem + 20*time.Millisecond)
+	if !animates && rem > 0 {
+		if rem > 0 {
+			c.After(rem + 20*time.Millisecond)
+		}
 	}
 	card.DrawOver(func(pt *ui.Painter, r ui.Rect) {
 		if r.W <= 2 || r.H <= 2 {
@@ -191,88 +216,58 @@ func drawAgentPaneBorder(c *ui.Context, card ui.Element, k *colors, p *Pane, car
 	})
 }
 
-// agentBadge renders the compact agent pill on a tab in the title bar or
-// sidebar.
-func agentBadge(c *ui.Context, k *colors, label string, fade float32, rem time.Duration) {
+// drawAgentTileMark draws the circular agent sparkles icon badge at the
+// top-right corner of a program tile fr, framed with a cutout rim so it reads
+// cleanly over any brand tile color without needing a text label.
+func drawAgentTileMark(p *ui.Painter, fr ui.Rect, k *colors, fade float32) {
+	if fade <= 0 {
+		return
+	}
 	col := k.agent
 	if col.A == 0 {
 		col = k.accent
 	}
-	c.After(rem + 20*time.Millisecond)
-	ui.Text(c, label).FontSize(badgeSize).FontWeight(600).
-		TextColor(col.Alpha(0.95*fade)).
-		Padding(2, 6).Radius(k.radius(radiusS)).
-		Background(col.Alpha(0.16 * fade)).
-		SingleLine().Ellipsis("…").MaxWidth(badgeMaxW + 12).Shrink(0).
-		Tooltip("Agent: " + label)
+	const markSize = float32(9)
+	const rimPad = float32(1)
+	r := ui.Rect{
+		X: fr.X + fr.W + 2.5 - markSize,
+		Y: fr.Y - 2.5,
+		W: markSize,
+		H: markSize,
+	}
+	rim := ui.Rect{
+		X: r.X - rimPad,
+		Y: r.Y - rimPad,
+		W: r.W + 2*rimPad,
+		H: r.H + 2*rimPad,
+	}
+	rimCol := k.panel.Alpha(0.92 * fade)
+	inkCol := k.accentText.Alpha(fade)
+	if int(col.R)+int(col.G)+int(col.B) > 450 {
+		inkCol = k.panel.Alpha(fade)
+	}
+	p.Fill(rim, rimCol, rim.W/2)
+	p.Fill(r, col.Alpha(fade), r.W/2)
+	const iconSize = float32(6)
+	ir := ui.Rect{
+		X: r.X + (r.W-iconSize)/2,
+		Y: r.Y + (r.H-iconSize)/2,
+		W: iconSize,
+		H: iconSize,
+	}
+	glyphIn(p, "sparkles", ir, inkCol)
 }
 
-// hasHumanInputBytes reports whether p holds user-typed terminal bytes rather
-// than terminal query replies (DA, CPR, DECRPM, OSC) or window focus reports.
+// hasHumanInputBytes delegates to rex.HasHumanInputBytes so desktop UI streams
+// and the session server share one exact human-input filter.
 func hasHumanInputBytes(p []byte) bool {
-	if len(p) == 0 {
-		return false
-	}
-	if bytes.IndexByte(p, 0x1b) < 0 {
-		return true
-	}
-	for i := 0; i < len(p); {
-		if bytes.HasPrefix(p[i:], []byte("\x1b[I")) || bytes.HasPrefix(p[i:], []byte("\x1b[O")) {
-			i += 3
-			continue
-		}
-		if n := termReplyLen(p[i:]); n > 0 {
-			i += n
-			continue
-		}
-		return true
-	}
-	return false
+	return rex.HasHumanInputBytes(p)
 }
 
-func termReplyLen(p []byte) int {
-	if len(p) < 3 || p[0] != 0x1b {
-		return 0
-	}
-	switch p[1] {
-	case ']', 'P', '_':
-		if bytes.HasPrefix(p, []byte("\x1b]5522;")) {
-			return 0
-		}
-		for i := 2; i < len(p); i++ {
-			switch {
-			case p[i] == 0x07 && p[1] == ']':
-				return i + 1
-			case p[i] == 0x1b:
-				if i+1 < len(p) && p[i+1] == '\\' {
-					return i + 2
-				}
-				return 0
-			}
-		}
-	case '[':
-		i, mark := 2, byte(0)
-		if p[i] == '?' || p[i] == '>' {
-			mark = p[i]
-			i++
-		}
-		for i < len(p) && (p[i] >= '0' && p[i] <= '9' || p[i] == ';') {
-			i++
-		}
-		if i == len(p) {
-			return 0
-		}
-		switch f := p[i]; {
-		case f == '$':
-			if i+1 < len(p) && p[i+1] == 'y' {
-				return i + 2
-			}
-		case f == 'R', f == 'n',
-			f == 'c' && mark != 0,
-			f == 't' && mark == 0,
-			f == 'u' && mark == '?':
-			return i + 1
-		}
-	}
-	return 0
+func isModifierOnlyKey(k ui.Key) bool {
+	return k == ui.KeyUnknown || k == ui.KeyBack || k == ui.KeyForward
+}
+
+func isScrollbackKey(mods ui.Modifiers, k ui.Key) bool {
+	return mods == ui.Shift && (k == ui.KeyPageUp || k == ui.KeyPageDown || k == ui.KeyHome || k == ui.KeyEnd)
 }
