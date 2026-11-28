@@ -759,19 +759,41 @@ func promptOnScreen(txt, prompt string) bool {
 	return len(probe) > 0 && strings.Contains(squash(txt), string(probe))
 }
 
+// promptEchoAllowance is how many bytes a TUI may print after a paste of
+// prompt, and the Returns after it, without having taken the prompt: the
+// echo of the text and a redraw of its input box.
+func promptEchoAllowance(prompt string) uint64 {
+	return 2*uint64(len(prompt)) + 1024
+}
+
+// pasteState is what the session showed right before a paste: the bytes
+// it had printed, and whether a dismiss hint was on the screen.
+type pasteState struct {
+	output uint64
+	hint   bool
+}
+
 // promptLost reports whether a prompt the transcript never recorded is
 // gone: the session runs, says it does no work, printed nothing for
 // delegateReadyFallbackQuiet, and its screen does not show the prompt. A
-// notice or a key may have taken the paste. A prompt still in the input
-// box is not lost.
-func promptLost(snap tuiSnapshot, prompt string, now time.Time) bool {
+// prompt still in the input box is not lost. That is not enough: an agent
+// with no status whose answer scrolled the prompt off the screen looks
+// the same, and a paste again would run its task twice. So it also needs
+// evidence that the agent did not take the input: it printed no more
+// than promptEchoAllowance since the paste, or the notice that was on
+// the screen before the paste is still there.
+func promptLost(snap tuiSnapshot, before pasteState, prompt string, now time.Time) bool {
 	if snap.exited || snap.busy {
 		return false
 	}
 	if now.Sub(snap.lastOutput) < delegateReadyFallbackQuiet {
 		return false
 	}
-	return !promptOnScreen(screenTail(snap.plainText, snap.rows), prompt)
+	if promptOnScreen(screenTail(snap.plainText, snap.rows), prompt) {
+		return false
+	}
+	printed := snap.output - min(snap.output, before.output)
+	return printed <= promptEchoAllowance(prompt) || (before.hint && hasDismissHint(snap))
 }
 
 // deliverTurnPrompt types a prompt into the agent's TUI and submits it
@@ -794,6 +816,8 @@ func deliverTurnPrompt(d *delegatedRun, ss *session, prompt string) error {
 
 	for attempt := 0; ; attempt++ {
 		dismissNotices(ss, d.agent)
+		pre := sampleTUI(ss)
+		start := pasteState{output: pre.output, hint: hasDismissHint(pre)}
 		if err := ss.paste(prompt); err != nil {
 			return err
 		}
@@ -805,12 +829,12 @@ func deliverTurnPrompt(d *delegatedRun, ss *session, prompt string) error {
 		if submitPrompt(d, ss, ackCh, before) {
 			return nil
 		}
-		if attempt >= delegateRepasteTries || !promptLost(sampleTUI(ss), prompt, time.Now()) {
+		if attempt >= delegateRepasteTries || !promptLost(sampleTUI(ss), start, prompt, time.Now()) {
 			return nil
 		}
 		// An agent may write its transcript late: it gets one more wait
 		// before the paste again, and the screen must still read lost.
-		if waitPromptAck(d, ss, ackCh, before, 2*delegateEnterWait) || !promptLost(sampleTUI(ss), prompt, time.Now()) {
+		if waitPromptAck(d, ss, ackCh, before, 2*delegateEnterWait) || !promptLost(sampleTUI(ss), start, prompt, time.Now()) {
 			return nil
 		}
 	}

@@ -741,21 +741,31 @@ func TestPromptDeliveryChecks(t *testing.T) {
 
 	now := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
 	quiet := now.Add(-2 * delegateReadyFallbackQuiet)
+	echo := promptEchoAllowance(prompt)
 	for _, c := range []struct {
-		name string
-		snap tuiSnapshot
-		want bool
+		name   string
+		snap   tuiSnapshot
+		before pasteState
+		want   bool
 	}{
-		{"empty box", tuiSnapshot{lastOutput: quiet, plainText: "> "}, true},
-		{"still in box", tuiSnapshot{lastOutput: quiet, plainText: "> " + prompt}, false},
-		{"drawing", tuiSnapshot{lastOutput: now, plainText: "> "}, false},
-		{"working", tuiSnapshot{lastOutput: quiet, busy: true, plainText: "> "}, false},
-		{"exited", tuiSnapshot{lastOutput: quiet, exited: true, plainText: "> "}, false},
+		{"empty box", tuiSnapshot{lastOutput: quiet, plainText: "> "}, pasteState{}, true},
+		{"echo only", tuiSnapshot{lastOutput: quiet, output: 100 + echo, plainText: "> "}, pasteState{output: 100}, true},
+		// An answer with no status nor transcript that scrolled the prompt
+		// off the screen: the agent took it.
+		{"answered", tuiSnapshot{lastOutput: quiet, output: 101 + echo, plainText: "> "}, pasteState{output: 100}, false},
+		// The notice that took the paste is still on the screen, whatever
+		// it redrew.
+		{"notice stays", tuiSnapshot{lastOutput: quiet, output: 10 * echo, plainText: "esc to dismiss\n> "}, pasteState{hint: true}, true},
+		{"notice new", tuiSnapshot{lastOutput: quiet, output: 10 * echo, plainText: "esc to dismiss\n> "}, pasteState{}, false},
+		{"still in box", tuiSnapshot{lastOutput: quiet, plainText: "> " + prompt}, pasteState{}, false},
+		{"drawing", tuiSnapshot{lastOutput: now, plainText: "> "}, pasteState{}, false},
+		{"working", tuiSnapshot{lastOutput: quiet, busy: true, plainText: "> "}, pasteState{}, false},
+		{"exited", tuiSnapshot{lastOutput: quiet, exited: true, plainText: "> "}, pasteState{}, false},
 		// An earlier turn's prompt in the scrollback is not this one on
 		// the screen.
-		{"scrollback only", tuiSnapshot{lastOutput: quiet, rows: 1, plainText: prompt + "\nreply\n> "}, true},
+		{"scrollback only", tuiSnapshot{lastOutput: quiet, rows: 1, plainText: prompt + "\nreply\n> "}, pasteState{}, true},
 	} {
-		if got := promptLost(c.snap, prompt, now); got != c.want {
+		if got := promptLost(c.snap, c.before, prompt, now); got != c.want {
 			t.Errorf("promptLost %s = %v, want %v", c.name, got, c.want)
 		}
 	}
@@ -796,6 +806,7 @@ func TestDelegateSplashKeepsPrompt(t *testing.T) {
 	}
 	binDir := t.TempDir()
 	modeFile := filepath.Join(binDir, "splash")
+	receivedFile := filepath.Join(binDir, "received")
 	slug := claudeSlug(projDir)
 	// The splash reads raw input a read at a time: with a hint, until a
 	// lone Escape; without, it takes the first read whatever it holds, as
@@ -818,7 +829,7 @@ if [ "$mode" = hint ]; then
     chunk=$(dd bs=256 count=1 2>/dev/null | od -An -c | tr -d ' \n')
     [ "$chunk" = '033' ] && break
   done
-else
+elif [ "$mode" = nohint ]; then
   printf 'Welcome! Press any key\r\n> '
   dd bs=256 count=1 >/dev/null 2>&1
 fi
@@ -827,12 +838,19 @@ printf '\033[2J\033[H> '
 while IFS= read -r line; do
   clean=$(printf '%%s' "$line" | tr -d '\r' | sed 's/\x1b\[200~//g; s/\x1b\[201~//g')
   [ -z "$clean" ] && continue
+  if [ "$mode" = answer ]; then
+    printf '%%s\n' "$clean" >> "%[4]s"
+    i=0
+    while [ $i -lt 200 ]; do i=$((i+1)); printf 'answer line %%s\n' $i; done
+    printf '> '
+    continue
+  fi
   printf '{"type":"user","sessionId":"%%s","message":{"role":"user","content":"%%s"}}\n' "$sid" "$clean" >> "$out"
   printf '{"type":"assistant","sessionId":"%%s","message":{"model":"claude-sonnet","content":[{"type":"text","text":"reply:%%s"}]}}\n' "$sid" "$clean" >> "$out"
   printf '{"type":"system","subtype":"turn_duration"}\n' >> "$out"
   printf 'reply:%%s\n> ' "$clean"
 done
-`, claudeCfg, slug, modeFile)
+`, claudeCfg, slug, modeFile, receivedFile)
 	if err := os.WriteFile(filepath.Join(binDir, "claude"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -873,5 +891,34 @@ done
 		if res.Status != "completed" || res.Result != "reply:"+prompt {
 			t.Fatalf("%s: Delegate result = %+v", mode, res)
 		}
+	}
+
+	// An agent with no status nor transcript takes the prompt and answers
+	// with more lines than the screen holds, which scrolls the prompt off:
+	// the prompt must arrive once, not be pasted again.
+	if err := os.WriteFile(modeFile, []byte("answer"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := c.Delegate(DelegateOptions{Agent: "claude", Dir: projDir, Prompt: "answer turn", Async: true})
+	if err != nil {
+		t.Fatalf("answer: Delegate: %v", err)
+	}
+	// Delivery is over once an async delegate returns. A sentinel typed
+	// after it lands after any paste again, as the terminal keeps order.
+	if err := c.Input(res.Session, []byte("sentinel\r")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var got string
+	for {
+		b, _ := os.ReadFile(receivedFile)
+		got = string(b)
+		if strings.Contains(got, "sentinel") || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got != "answer turn\nsentinel\n" {
+		t.Fatalf("answer: the agent received %q, want the prompt once, then the sentinel", got)
 	}
 }
