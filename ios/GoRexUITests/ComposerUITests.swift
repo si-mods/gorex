@@ -490,7 +490,7 @@ final class ComposerAttachmentUITests: XCTestCase {
         } else if app.navigationBars.buttons["Back"].exists {
             app.navigationBars.buttons["Back"].tap()
         }
-        let row = app.buttons["Upload Shell"]
+        let row = app.buttons.matching(NSPredicate(format: "label == 'Upload Shell' OR identifier == 'Upload Shell'")).firstMatch
         if !row.waitForExistence(timeout: 4) {
             if app.buttons["Show Sidebar"].exists {
                 app.buttons["Show Sidebar"].tap()
@@ -686,20 +686,26 @@ final class ComposerAttachmentUITests: XCTestCase {
         } else if app.buttons["BackButton"].exists {
             app.buttons["BackButton"].tap()
         }
-        let ipLabel = app.buttons["127.0.0.1"]
-        guard ipLabel.waitForExistence(timeout: 3) else { return }
-        let targetY = ipLabel.frame.midY
-        let matchingMenu = app.buttons.matching(identifier: "Host Menu").allElementsBoundByIndex.first { btn in
-            btn.exists && abs(btn.frame.midY - targetY) < 28
-        } ?? app.buttons.matching(NSPredicate(format: "label == 'Host Menu'")).allElementsBoundByIndex.first { btn in
-            btn.exists && abs(btn.frame.midY - targetY) < 28
-        }
-        guard let matchingMenu else { return }
-        matchingMenu.tap()
-        let remove = app.buttons["Remove"]
-        if remove.waitForExistence(timeout: 3) {
+        let ipQuery = app.buttons.matching(NSPredicate(format: "label == '127.0.0.1' OR identifier == '127.0.0.1'"))
+        for _ in 0..<4 {
+            let ipLabel = ipQuery.firstMatch
+            guard ipLabel.waitForExistence(timeout: 3) else { break }
+            let targetY = ipLabel.frame.midY
+            let beforeCount = ipQuery.count
+            let matchingMenu = app.buttons.matching(identifier: "Host Menu").allElementsBoundByIndex.first { btn in
+                btn.exists && abs(btn.frame.midY - targetY) < 28
+            } ?? app.buttons.matching(NSPredicate(format: "label == 'Host Menu'")).allElementsBoundByIndex.first { btn in
+                btn.exists && abs(btn.frame.midY - targetY) < 28
+            }
+            guard let matchingMenu else { break }
+            matchingMenu.tap()
+            let remove = app.buttons["Remove"].firstMatch
+            guard remove.waitForExistence(timeout: 3) else { break }
             remove.tap()
-            _ = ipLabel.waitForNonExistence(timeout: 3)
+            let waitDeadline = Date().addingTimeInterval(3)
+            while ipQuery.count >= beforeCount, Date() < waitDeadline {
+                _ = ipQuery.firstMatch.exists
+            }
         }
     }
 
