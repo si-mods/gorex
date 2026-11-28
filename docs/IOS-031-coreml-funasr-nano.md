@@ -1,9 +1,9 @@
 ---
 name: IOS-031
-description: "Runs Fun-ASR-Nano on iOS with Apple Core ML instead of sherpa-onnx, removing SherpaOnnxC (15 to 25 MB IPA) and running inference on the Neural Engine. Use when you change iOS dictation models, Core ML speech conversion, or SherpaOnnxC removal."
+description: "Runs Fun-ASR-Nano on iOS with Apple Core ML instead of sherpa-onnx, removing SherpaOnnxC (15 to 25 MB IPA), with the models resident on the CPU (Latency). Use when you change iOS dictation models, Core ML speech conversion, or SherpaOnnxC removal."
 metadata:
   created: "2026-11-27"
-  updated: "2026-11-27"
+  updated: "2026-11-28"
 ---
 
 # IOS-031: Core ML Fun-ASR-Nano for iOS dictation
@@ -12,7 +12,7 @@ Status: built.
 
 Converted `FunAudioLLM/Fun-ASR-Nano-2512` to precompiled Apple Core ML (`.mlmodelc`) and published `funasr-nano-coreml-v1.tar.bz2` (550 MB compressed, 698 MB unpacked) under release `models-funasr-nano-coreml-v1`, with `SherpaOnnxC` removed from `ios/project.yml`.
 
-This doc decides how Rex Go runs `Fun-ASR-Nano` natively on Apple `CoreML.framework` on iOS so we can remove `SherpaOnnxC` completely, cut 15 to 25 MB from the IPA, and move inference from 2 CPU cores to the Apple Neural Engine (ANE), while keeping a clean path for Core ML TTS later.
+This doc decides how Rex Go runs `Fun-ASR-Nano` natively on Apple `CoreML.framework` on iOS so we can remove `SherpaOnnxC` completely, cut 15 to 25 MB from the IPA, and move inference from ONNX Runtime to Core ML on the CPU (see Latency), while keeping a clean path for Core ML TTS later.
 
 ## Problem
 
@@ -22,7 +22,7 @@ This doc decides how Rex Go runs `Fun-ASR-Nano` natively on Apple `CoreML.framew
 
 - Remove `SherpaOnnxC` (`ios/SherpaOnnx/Package.swift` and the `SherpaOnnx` dependency in `ios/project.yml`) and save 15 to 25 MB on the iOS IPA.
 - Keep `Fun-ASR-Nano` Chinese-English mixed coding dictation quality identical to the current `sherpa-onnx` int8 model.
-- Run `Fun-ASR-Nano` encoder and decoder on Core ML (ANE + GPU via `.all` compute units) with lower latency and lower power draw than 2-core ONNX CPU inference.
+- Run `Fun-ASR-Nano` encoder and decoder on Core ML, resident on `.cpuOnly` (Latency: `.all` compiled for the GPU on each load and took 35 to 43 s a phrase).
 - Keep the Core ML pipeline modular so future on-device TTS (such as Core ML Kokoro) can reuse the same model download, caching, and Core ML runner patterns with zero new native runtimes.
 
 ## Non-goals
@@ -42,8 +42,8 @@ Users see the same `Fun-ASR-Nano` choice in Settings > Dictation and the same Co
 | Stage | Input | Output | Core ML target |
 | --- | --- | --- | --- |
 | 1. Audio Frontend (Swift / Accelerate) | 16 kHz mono `Float` PCM (up to 20 s) | 80-dim log-Mel Fbank + LFR stacking + CMVN | Pure Swift using `Accelerate` (`vDSP`), zero external C++ |
-| 2. `EncoderAdaptor.mlpackage` | Stacked Fbank `[1, T, D]` | Audio embeddings `[1, T', H]` aligned to Qwen3 hidden size | FP16 / INT8 weight-compressed MLProgram on ANE |
-| 3. `Qwen3Decoder.mlpackage` | Token/audio embeddings + `MLState` KV-cache | Next-token logits `[1, 1, V]` | Stateful `MLState` Core ML model (iOS 18+ / iOS 26 native) with INT4/INT8 LUT quantization on ANE |
+| 2. `EncoderAdaptor.mlpackage` | Stacked Fbank `[1, T, D]` | Audio embeddings `[1, T', H]` aligned to Qwen3 hidden size | FP16 / INT8 weight-compressed MLProgram on the CPU |
+| 3. `Qwen3Decoder.mlpackage` | Token/audio embeddings + `MLState` KV-cache | Next-token logits `[1, 1, V]` | Stateful `MLState` Core ML model (iOS 18+ / iOS 26 native) with INT4/INT8 LUT quantization on the CPU |
 
 Using iOS 18+ **stateful Core ML (`MLState`)** for the Qwen3-0.6B KV-cache avoids copying cache tensors across Swift and Core ML on every decode step, keeping autoregressive decoding fast and memory-bounded on iPhone.
 
@@ -69,9 +69,29 @@ All code lives in `ios/GoRex/Terminal/` with zero third-party C++ dependencies:
 
 Because Core ML is part of iOS (`0 MB` binary overhead), adding on-device TTS later (such as Core ML Kokoro or Matcha, or FluidAudio's Core ML TTS) requires only adding a small Swift frontend + `.mlpackage` download without re-introducing ONNX Runtime or `SherpaOnnxC`.
 
+## Latency
+
+Dictation spun after the mic went off for minutes on a phone: `CoreMLFunASR` loaded `EncoderAdaptor` and `Qwen3Decoder` for each phrase on `.all` (staged after #1244 to keep both from being resident at once). Core ML compiles an `.all` model for the GPU at its first prediction, and a model loaded again compiles again. Measured natively on an Apple M2 Pro Mac with the release models, a 4 s phrase took 35 to 43 s (encoder's first prediction 19 to 29 s, decoder prefill 8 to 10 s), and a 14.5 s dictation with pauses, given in real time to `Listening`, finished 320 s after the mic went off.
+
+Fun-ASR-Nano now runs on `.cpuOnly` on a device as on the simulator, with all three models loaded once in `CoreMLFunASR.init` and kept while the recogniser is; each phrase takes a fresh `MLState` only. Measured on the same Mac, with the models resident:
+
+| Compute units | Load (encoder + decoder) | First phrase | Later phrases (encoder / prefill / token) | Footprint, peak |
+| --- | --- | --- | --- | --- |
+| `.cpuOnly` | 1.4 + 0.02 s (7.5 s once, cold) | as later | 0.1 s / 0.3 s / 0.12 to 0.18 s | 80 MB, 117 MB |
+| `.cpuAndNeuralEngine` | 30 s | as later | 0.05 s / 0.2 s / 0.13 s | 200 MB, 296 MB |
+| `.all` | 1.8 s | 32 s (GPU compile) | 0.05 s / 0.1 s / 0.04 s | 590 MB and growing, 601 MB |
+
+The CPU decodes as fast as the Neural Engine, loads 20 times faster and holds under half its memory; its footprint stays far below the 570 MB of weights, which stay mapped from disk. `.all` is fastest per token once compiled, but its compile is what the `MpsGraphValidator` crash of #1244 ran out of memory in, and its footprint grows past what an iPhone allows. With the fix, the same 14.5 s dictation finishes 2.0 s after the mic (1.5 s for 17 s of Chinese), at a peak footprint of 180 MB against 512 MB before.
+
+Two bounds go with it. A listening stops guessing once the mic is off: no new guess starts, and one going on is cancelled (`Listening.unlessOff`), so finish waits for the last phrase, not for guesses at it. A phrase decodes at most one token per encoder frame (about 16 a second, past any speech rate), so a decode that loops on noise ends with the phrase, and a cancelled listening stops at the next token.
+
+The Silero VAD now drains Core ML's autoreleased outputs for each chunk. Without its own pool on a task's thread, they piled up, and each chunk took longer than the last. On the simulator, 14.5 s of audio waiting in the ring took 22 to 25 s to hear, against 1 s now. In real time, this cost Fun-ASR-Nano's finish 3 to 4 s.
+
+`DictationTests.testListeningEndsSoonAfterTheMic` feeds real speech in real time through `Listening` and requires finish within 5 s of the mic going off. On the simulator, Fun-ASR-Nano takes 2.4 to 2.8 s and SenseVoice 0.4 to 0.5 s. `testFinishGivesUpAGuessGoingOn` gives a recogniser whose first guess never ends unless cancelled; finish takes 1 s, and before the fix it never ended. A phone's CPU is not measured here.
+
 ## Alternatives
 
-- **Minimal `sherpa-onnx` + reduced-ops ONNX Runtime build**: Keeps upstream `.onnx` weights directly, but still ships ~8 to 12 MB of ONNX Runtime + C++ code in the IPA and stays on 2-core CPU inference instead of ANE.
+- **Minimal `sherpa-onnx` + reduced-ops ONNX Runtime build**: Keeps upstream `.onnx` weights directly, but still ships ~8 to 12 MB of ONNX Runtime + C++ code in the IPA and keeps a second runtime beside Core ML.
 - **Apple iOS 26 `SpeechAnalyzer`**: Zero binary size and zero model storage, but replaces `Fun-ASR-Nano` rather than preserving its Chinese-English technical dictation accuracy. Can still be offered as an extra engine alongside Core ML `Fun-ASR-Nano`.
 - **Keep `SherpaOnnxC` as-is**: Zero engineering effort, but permanently carries 15 to 25 MB of unused ONNX/TTS/diarization code in every TestFlight and App Store download.
 

@@ -90,39 +90,45 @@ actor CoreMLSileroVAD: Sendable {
         var maxProb: Float = 0
 
         if !silent {
-            let audioArr = try MLMultiArray(shape: [1, NSNumber(value: Self.inputSize)], dataType: .float32)
-            let hArr = try MLMultiArray(shape: [1, NSNumber(value: VadStreamState.stateSize)], dataType: .float32)
-            let cArr = try MLMultiArray(shape: [1, NSNumber(value: VadStreamState.stateSize)], dataType: .float32)
-            let aPtr = audioArr.dataPointer.assumingMemoryBound(to: Float.self)
-            let hPtr = hArr.dataPointer.assumingMemoryBound(to: Float.self)
-            let cPtr = cArr.dataPointer.assumingMemoryBound(to: Float.self)
+            // Core ML's outputs go as each chunk ends: on a task's thread no
+            // pool drains them, and a backlog heard in one go piled them
+            // up, each chunk slower than the last (14.5 s of audio took
+            // 25 s on the simulator, not 1 s).
+            try autoreleasepool {
+                let audioArr = try MLMultiArray(shape: [1, NSNumber(value: Self.inputSize)], dataType: .float32)
+                let hArr = try MLMultiArray(shape: [1, NSNumber(value: VadStreamState.stateSize)], dataType: .float32)
+                let cArr = try MLMultiArray(shape: [1, NSNumber(value: VadStreamState.stateSize)], dataType: .float32)
+                let aPtr = audioArr.dataPointer.assumingMemoryBound(to: Float.self)
+                let hPtr = hArr.dataPointer.assumingMemoryBound(to: Float.self)
+                let cPtr = cArr.dataPointer.assumingMemoryBound(to: Float.self)
 
-            let numWindows = Self.chunkSize / Self.windowSize
-            for w in 0..<numWindows {
-                let offset = w * Self.windowSize
-                for i in 0..<VadStreamState.contextSize { aPtr[i] = ctx[i] }
-                for i in 0..<Self.windowSize { aPtr[VadStreamState.contextSize + i] = samples[offset + i] }
-                for i in 0..<VadStreamState.stateSize { hPtr[i] = h[i]; cPtr[i] = c[i] }
+                let numWindows = Self.chunkSize / Self.windowSize
+                for w in 0..<numWindows {
+                    let offset = w * Self.windowSize
+                    for i in 0..<VadStreamState.contextSize { aPtr[i] = ctx[i] }
+                    for i in 0..<Self.windowSize { aPtr[VadStreamState.contextSize + i] = samples[offset + i] }
+                    for i in 0..<VadStreamState.stateSize { hPtr[i] = h[i]; cPtr[i] = c[i] }
 
-                let input = try MLDictionaryFeatureProvider(dictionary: [
-                    "audio": MLFeatureValue(multiArray: audioArr),
-                    "h_state": MLFeatureValue(multiArray: hArr),
-                    "c_state": MLFeatureValue(multiArray: cArr),
-                ])
-                let out = try model.prediction(from: input)
-                if let pArr = out.featureValue(for: "prob")?.multiArrayValue {
-                    let p = pArr.dataPointer.assumingMemoryBound(to: Float.self)[0]
-                    if p > maxProb { maxProb = p }
+                    let input = try MLDictionaryFeatureProvider(dictionary: [
+                        "audio": MLFeatureValue(multiArray: audioArr),
+                        "h_state": MLFeatureValue(multiArray: hArr),
+                        "c_state": MLFeatureValue(multiArray: cArr),
+                    ])
+                    let out = try model.prediction(from: input)
+                    if let pArr = out.featureValue(for: "prob")?.multiArrayValue {
+                        let p = pArr.dataPointer.assumingMemoryBound(to: Float.self)[0]
+                        if p > maxProb { maxProb = p }
+                    }
+                    if let nh = out.featureValue(for: "new_h")?.multiArrayValue {
+                        let p = nh.dataPointer.assumingMemoryBound(to: Float.self)
+                        for i in 0..<VadStreamState.stateSize { h[i] = p[i] }
+                    }
+                    if let nc = out.featureValue(for: "new_c")?.multiArrayValue {
+                        let p = nc.dataPointer.assumingMemoryBound(to: Float.self)
+                        for i in 0..<VadStreamState.stateSize { c[i] = p[i] }
+                    }
+                    ctx = Array(samples[(offset + Self.windowSize - VadStreamState.contextSize)..<(offset + Self.windowSize)])
                 }
-                if let nh = out.featureValue(for: "new_h")?.multiArrayValue {
-                    let p = nh.dataPointer.assumingMemoryBound(to: Float.self)
-                    for i in 0..<VadStreamState.stateSize { h[i] = p[i] }
-                }
-                if let nc = out.featureValue(for: "new_c")?.multiArrayValue {
-                    let p = nc.dataPointer.assumingMemoryBound(to: Float.self)
-                    for i in 0..<VadStreamState.stateSize { c[i] = p[i] }
-                }
-                ctx = Array(samples[(offset + Self.windowSize - VadStreamState.contextSize)..<(offset + Self.windowSize)])
             }
         } else {
             ctx = Array(samples.suffix(VadStreamState.contextSize))

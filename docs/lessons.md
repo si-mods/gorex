@@ -97,6 +97,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** distinguish `errSecItemNotFound` from transient/locked errors (`errSecInteractionNotAllowed`); never delete metadata or push an empty key set on a transient error, and gate dials on the key store being synced with a test of a locked Keychain cold start.
 - **Source:** #1157 replaced `useSSHKey` with `SSHKeyStore`, which treated any Keychain error as missing, wiped `sshKeys` metadata, and let `tailcatProxyNow` dial SSH hosts with zero keys on cold start (fixed in this PR).
 
+### A Core ML model loaded per call, or on `.all`
+- **Trigger:** the diff calls `MLModel(contentsOf:)` inside a per-phrase path (`recognise`, a prediction), or sets `computeUnits` other than `.cpuOnly` for a dictation model.
+- **Check:** the PR gives per-phrase latency for the compute units chosen, first and later phrase, measured natively on an Apple Silicon Mac (the simulator runs the CPU only), and the finish time of `DictationTests.testListeningEndsSoonAfterTheMic`. On `.all`, Core ML compiles for the GPU at each loaded model's first prediction. A synchronous `prediction` that runs over and over on a task's thread does so inside an `autoreleasepool`.
+- **Source:** #1244 loaded Fun-ASR-Nano's encoder and decoder for each phrase on `.all` to fix an out-of-memory crash; each phrase then took 35 to 43 s on a Mac, a 14.5 s dictation finished 320 s after the mic, and testers saw the spinner without end. #1248 keeps the models loaded on the CPU (IOS-031, Latency). #1238's Silero VAD had no pool: 14.5 s of audio waiting took the simulator 25 s to hear.
+
 ### A UI test that expects a fresh install
 - **Trigger:** an XCUITest under `ios/GoRexUITests/` checks a value the app makes once and keeps (UserDefaults, the Keychain, the app's files), such as a default name.
 - **Check:** the test sets that state at launch, or accepts any value an earlier build could have left. The Mac mini's simulator keeps the app's data between runs; `xcodebuild test` installs over it. The PR shows a green `ios-test` run of the test, not only a local run on a new simulator.

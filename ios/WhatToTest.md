@@ -12,6 +12,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 ## en-US
 - Fixed the floating Search button overlapping the Composer bar and Send button in split view on iPhone Duo and landscape iPhones.
 - Fixed SSH hosts occasionally prompting for a password on cold launch when local SSH keys were not yet synced from the Keychain.
+- Dictation: tapping the mic to finish no longer spins for minutes; the text appears a few seconds after you stop talking, with Fun-ASR-Nano and SenseVoice alike.
 - Dictation: Fun-ASR-Nano now stages its encoder and decoder separately to cut peak memory and avoid out-of-memory crashes during hold-to-talk voice input.
 - Dictation: holding the mic to send voice with Fun-ASR-Nano no longer crashes when the Neural Engine fails to allocate decoder state; it now falls back cleanly.
 - Program tab icons now stay in sync across iPhone, desktop, and web from a single shared catalog.
@@ -187,6 +188,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 ## zh-Hans
 - 修复在 iPhone Duo 展开态及大屏 iPhone 横屏分栏模式下，搜索图标浮动遮挡 Composer 输入框与发送按钮的问题。
 - 修复冷启动时因本地 SSH 密钥尚未从钥匙串同步完成，导致 SSH 主机偶发弹出密码输入框的问题。
+- 语音听写：点麦克风结束后不再转圈好几分钟；停止说话后几秒内出字，Fun-ASR-Nano 与 SenseVoice 均如此。
 - 语音听写：Fun-ASR-Nano 改为分阶段加载编码器与解码器，大幅降低峰值内存，修复长按发送语音时因内存不足导致的闪退。
 - 语音听写：使用 Fun-ASR-Nano 长按发送语音时，神经网络引擎分配解码状态失败不再闪退，改为自动回退并继续识别。
 - 程序标签图标目录现已由统一配置自动生成，iPhone、桌面端与网页端图标保持一致。

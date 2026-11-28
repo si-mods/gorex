@@ -490,8 +490,8 @@ import os
 
 /// One listening, as rootshell's DictationRecognizer, with its defaults:
 /// Silero VAD cuts what the mic hears into phrases as it comes; the phrase
-/// open is recognised again as it grows, for what is said so far, and once
-/// more as the speaker pauses, for good.
+/// open is recognised again as it grows while the mic is on, for what is
+/// said so far, and once more as the speaker pauses, for good.
 nonisolated final class Listening: Sendable {
     /// What is said so far, as it changes: the newest only.
     let said: AsyncStream<Dictation.Said>
@@ -550,7 +550,7 @@ nonisolated final class Listening: Sendable {
                                         _ longest: Int, _ show: AsyncStream<Dictation.Said>.Continuation) async throws -> String {
         defer { show.finish() }
         let (speech, vad) = try await models.value
-        var ear = Ear(speech: speech, vad: vad, longest: longest, show: show)
+        var ear = Ear(speech: speech, vad: vad, audio: audio, longest: longest, show: show)
         var chunk = [Float](repeating: 0, count: CoreMLSileroVAD.chunkSize)
         var filled = 0
         while true {
@@ -577,10 +577,27 @@ nonisolated final class Listening: Sendable {
     /// about half a microphone's buffer.
     private static let poll = Duration.milliseconds(50)
 
+    /// What work gives, or nil as the mic goes off, work then cancelled:
+    /// a guess going on would keep finish waiting, then settle its phrase
+    /// again.
+    static func unlessOff<T: Sendable>(_ audio: SampleRing, _ work: @escaping @Sendable () async throws -> T) async throws -> T? {
+        try await withThrowingTaskGroup(of: T?.self) { g in
+            g.addTask { try await work() }
+            g.addTask {
+                while !audio.finished { try await Task.sleep(for: poll) }
+                return nil
+            }
+            defer { g.cancelAll() }
+            return try await g.next() ?? nil
+        }
+    }
+
     /// The phrase open, and how it is heard.
     private nonisolated struct Ear {
         let speech: any Recogniser
         let vad: CoreMLSileroVAD
+        /// What the microphone heard: once it is off, no guess.
+        let audio: SampleRing
         /// A phrase is cut as it passes this many samples.
         let longest: Int
         let show: AsyncStream<Dictation.Said>.Continuation
@@ -603,9 +620,10 @@ nonisolated final class Listening: Sendable {
         /// with a word of 0.2 s.
         private static let shortest = 4_800
 
-        init(speech: any Recogniser, vad: CoreMLSileroVAD, longest: Int, show: AsyncStream<Dictation.Said>.Continuation) {
+        init(speech: any Recogniser, vad: CoreMLSileroVAD, audio: SampleRing, longest: Int, show: AsyncStream<Dictation.Said>.Continuation) {
             self.speech = speech
             self.vad = vad
+            self.audio = audio
             self.longest = longest
             self.show = show
         }
@@ -630,7 +648,8 @@ nonisolated final class Listening: Sendable {
                 try await settle(last: true)
             } else if speaking, phrase.count >= longest {
                 try await settle(last: false)
-            } else if speaking, heard >= every {
+            } else if !audio.finished, speaking, heard >= every {
+                // With the mic off, what is left is settled, not guessed at.
                 await guess()
             }
         }
@@ -642,14 +661,16 @@ nonisolated final class Listening: Sendable {
             try await settle(last: true)
         }
 
-        /// The phrase open, recognised for a guess; the slower that is, the
-        /// less often, so it takes a third of the time at most and audio
-        /// never piles up.
+        /// The phrase open, recognised for a guess, given up as the mic goes
+        /// off; the slower that is, the less often, so it takes a third of
+        /// the time at most and audio never piles up.
         private mutating func guess() async {
             heard = 0
             guard phrase.count >= Self.shortest else { return }
             let start = ContinuousClock.now
-            if let text = try? await recognise(phrase), !text.isEmpty {
+            let (speech, samples) = (speech, phrase)
+            if let text = try? await Listening.unlessOff(audio, { Dictation.joined([try await speech.recognise(samples)]) }),
+               !text.isEmpty {
                 said.open = text
                 show.yield(said)
             }
