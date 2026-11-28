@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `what-to-test` step of the `linux` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Composer Mode now uses a compact single-row pill (+, message field, mic, and Send on one line) while keeping More Keys, Hide Keyboard, and Show Key Bar in + and swipe-down.
 - A red failure message now wraps to three lines instead of cutting the reason off, and one for a tab or pane that already closed says so in plain words, with no internal id.
 - Pairing a host with Rex Go now has a cleaner step-by-step sheet with status badges, a prominent fingerprint card, live countdown, and smoother completion transition.
 - Pairing a host with Rex Go now treats pre-allowed devices as paired, shows a countdown and clear error details while waiting for approval, and removes unapproved hosts if the window expires.
@@ -195,6 +196,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings has a new Notifications row: it shows whether they are on, and turns them on or opens the Settings app for you.
 
 ## zh-Hans
+- Composer 模式精简为单行胶囊布局（+、输入框、麦克风与发送同处一行），快捷按键、收起键盘与切回传统键栏集成至「+」菜单并保留下滑手势。
 - 红色失败提示现在最多换行显示三行，不再把原因截掉；标签页或分屏已关闭时，提示直接说明它已在电脑上关闭，不再显示内部 id。
 - Rex Go 扫码配对弹窗升级为更清爽的分步状态卡片：带状态图标徽章、醒目的指纹核对卡片、实时倒计时与配对完成后的平滑跳转。
 - Rex Go 扫码配对主机时，已预先允许的设备会直接添加成功；等待批准期间显示剩余时间与失败原因，超时未批准不再残留无法连接的主机。
