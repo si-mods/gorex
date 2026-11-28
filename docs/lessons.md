@@ -110,7 +110,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### A UI test that writes to the Keychain
 - **Trigger:** an XCUITest drives a screen that calls `SecItemAdd`, or a diff puts `CODE_SIGNING_ALLOWED=NO` back into `.github/workflows/ios-test.yml`.
 - **Check:** the ios-test build is signed ad hoc, so the app has its entitlements. An unsigned app gets `errSecMissingEntitlement` (-34018) for every item, and the screen shows its error alert in place of the result. The PR shows a green `ios-test` run of the test.
-- **Source:** #1157's `SSHKeysUITests` never passed in CI: Generate showed "A required entitlement is not present." (#1161). This PR signs the test build ad hoc.
+- **Source:** #1157's `SSHKeysUITests` never passed in CI: Generate showed "A required entitlement is not present." (#1161). #1265 signs the test build ad hoc.
 
 ## Fixes
 
