@@ -466,7 +466,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 
 ### Same-name asset upload race
 - **Trigger:** two release jobs upload a same-named asset (`SHA256SUMS`) and one loses with HTTP 422.
-- **Check:** uploads that dedupe by name still race when both jobs write at once; the mygo `-upload` flag needs `--clobber`, or one job must own the shared file.
+- **Check:** uploads that dedupe by name still race when both jobs write at once; `gh release upload --clobber` does not cure it (it deletes, then uploads, so two jobs still collide); serialise the jobs that upload (job `concurrency` in `release.yml`), or make one job own the shared file.
 - **Source:** the v0.63.0 release's `unix` job failed on `SHA256SUMS` already existing after `windows` won the race; a `--failed` rerun recovered it because the upload skips assets by name.
 
 ### Dictation that sends
