@@ -219,8 +219,8 @@ func TestRexGoQR(t *testing.T) {
 	}
 	remoteUI.st.Pairing = rex.RemotePairing{Open: true, ExpiresAt: time.Now().Add(2 * time.Minute)}
 	tt.Frame()
-	if !tt.HasText(locales.RemoteRexGoQRHint()) || !tt.HasText(locales.RemoteQRTransportRelay()) {
-		t.Fatalf("no hint or relay transport in %q", tt.Texts())
+	if !tt.HasText(locales.RemoteQRTransportRelay()) {
+		t.Fatalf("no relay transport in %q", tt.Texts())
 	}
 	if !tt.HasText(locales.RemoteQRRelay()) || !tt.HasText(locales.RemoteQRSameNetwork()) {
 		t.Fatalf("no relay / same-network choice in %q", tt.Texts())
@@ -235,14 +235,22 @@ func TestRexGoQR(t *testing.T) {
 		t.Fatalf("click same-network: %v", err)
 	}
 	tt.Frame()
-	if !tt.HasText(locales.RemoteQRTransportDirect()) || !tt.HasText(locales.RemoteDirectQRHint()) {
-		t.Fatalf("same-network tab missing direct transport/hint: %q", tt.Texts())
+	if !tt.HasText(locales.RemoteQRTransportDirect()) {
+		t.Fatalf("same-network tab missing direct transport: %q", tt.Texts())
 	}
-	// A pending request can be approved directly inside the QR dialog.
+	// Step 2: a pending request transitions the dialog to the approval view
+	// with large fingerprint and Approve / Reject buttons.
 	remoteUI.st.Pending = []rex.RemotePending{{Name: "alice-iphone", PublicKey: testKey}}
 	tt.Frame()
-	if !tt.HasText("alice-iphone") || !tt.HasText(rex.Fingerprint(testKey)) || !tt.HasText(locales.RemoteApprove()) {
-		t.Fatalf("pending request not shown in QR dialog: %q", tt.Texts())
+	if !tt.HasText(locales.RemoteQRApproveTitle("alice-iphone")) || !tt.HasText(rex.Fingerprint(testKey)) || !tt.HasText(locales.RemoteApprove()) {
+		t.Fatalf("approval step not shown in QR dialog: %q", tt.Texts())
+	}
+	// Step 3: once approved, the dialog shows the Paired confirmation state.
+	remoteUI.st.Pending = nil
+	remoteUI.pairQR.pairedDevice = "alice-iphone"
+	tt.Frame()
+	if !tt.HasText(locales.RemoteQRPairedTitle("alice-iphone")) || !tt.HasText(locales.RemoteQRDone()) {
+		t.Fatalf("paired confirmation step not shown: %q", tt.Texts())
 	}
 	remoteUI.st.Running = false
 	tt.Frame()
