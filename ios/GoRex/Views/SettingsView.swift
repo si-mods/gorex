@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 /// Settings, as Rex's iPhone app lays them out: cards of rows that open a
 /// page each, the client's label, and a search over the rows' titles.
@@ -79,6 +80,9 @@ struct SettingsView: View {
                         }
                     }
                 }
+                if matches("Notifications") {
+                    NotificationsSection()
+                }
                 if matches("Label") {
                     Section("Client Info") {
                         SettingsRow(icon: nil, title: "Label") {
@@ -157,6 +161,52 @@ struct SettingsTile<Content: View>: View {
         content.foregroundStyle(.white)
             .frame(width: size, height: size)
             .background(color, in: RoundedRectangle(cornerRadius: size * 7 / 30, style: .continuous))
+    }
+}
+
+/// Whether the app may post notifications, as the system has it, read
+/// when Settings appears and when the app becomes active again, as the
+/// user may have changed it in the Settings app. Off offers the way to
+/// the system's page, which is the only place to turn them on again; a
+/// question not asked yet offers to ask it.
+private struct NotificationsSection: View {
+    @Environment(\.scenePhase) private var phase
+    @Environment(\.openURL) private var openURL
+    @State private var status: UNAuthorizationStatus?
+
+    var body: some View {
+        Section {
+            SettingsRow(icon: nil, title: "Notifications") {
+                switch status {
+                case .denied:
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(url) }
+                    }
+                case .notDetermined:
+                    Button("Turn On") {
+                        Task {
+                            await Notifier.shared.requestAuthorization()
+                            await refresh()
+                        }
+                    }
+                case .authorized, .provisional, .ephemeral:
+                    Text("On").foregroundStyle(.secondary)
+                default:
+                    EmptyView()
+                }
+            }
+            .listRowBackground(Color.card)
+        } footer: {
+            if status == .denied { Text("Notifications are off") }
+        }
+        .task { await refresh() }
+        .onChange(of: phase) { _, p in
+            if p == .active { Task { await refresh() } }
+        }
+    }
+
+    private func refresh() async {
+        status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
     }
 }
 

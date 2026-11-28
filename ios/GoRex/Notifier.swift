@@ -53,10 +53,16 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         Task {
             let center = UNUserNotificationCenter.current()
             if await center.notificationSettings().authorizationStatus == .notDetermined {
-                _ = try? await center.requestAuthorization(options: [.alert, .sound])
+                await requestAuthorization()
             }
             try? await center.add(request)
         }
+    }
+
+    /// Asks the user to allow notifications; whether they are allowed.
+    @discardableResult
+    func requestAuthorization() async -> Bool {
+        (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
     }
 
     // The answers below use the completion handlers, not the async forms: for

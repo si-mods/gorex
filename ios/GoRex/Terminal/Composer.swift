@@ -990,7 +990,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     }
 
     private func failed(_ error: Error) {
-        terminal?.alert(String(localized: "Can't Upload"), error.localizedDescription)
+        Toasts.shared.fail("Can't Upload", error)
     }
 }
 

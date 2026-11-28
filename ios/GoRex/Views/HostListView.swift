@@ -64,8 +64,6 @@ struct HostListView: View {
     @State private var existing: Existing?
     /// The hosts taking their renames of spaces now.
     @State private var renaming: Set<UUID> = []
-    /// What failed last, and why, as the server says it.
-    @State private var failure: (title: String, why: String)?
     /// The host whose section is being dragged, and the order the drag
     /// leaves the hosts in.
     @State private var hostDrag: HostDrag?
@@ -188,10 +186,6 @@ struct HostListView: View {
             Button("Cancel", role: .cancel) {}
         } message: { e in
             Text("Its folder is a project of \(e.host.config.name) in \(SpaceName.shown(e.space)).")
-        }
-        .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
-        } message: {
-            Text(failure?.why ?? "")
         }
     }
 
@@ -686,7 +680,7 @@ struct HostListView: View {
                     }
                 }
             } catch {
-                failure = (String(localized: "Can't Make the Project"), error.localizedDescription)
+                Toasts.shared.fail("Can't Make the Project", error)
             }
         }
     }
@@ -699,7 +693,7 @@ struct HostListView: View {
                 book.chosen = e.into
                 expand(e.host, e.project)
             } catch {
-                failure = (String(localized: "Can't Move the Project"), error.localizedDescription)
+                Toasts.shared.fail("Can't Move the Project", error)
             }
         }
     }

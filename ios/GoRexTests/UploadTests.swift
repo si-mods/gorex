@@ -112,6 +112,32 @@ nonisolated final class UploadTests: XCTestCase {
         XCTAssertEqual(args.map { $0["count"] as? Int }, [2, 2, nil])
     }
 
+    /// A failure at the third of five files leaves the first two sent; the
+    /// retry sends the other three, and no file goes up twice.
+    @MainActor func testRetrySendsOnlyTheUnsent() async throws {
+        struct Down: Error {}
+        let files = (1...5).map { URL(fileURLWithPath: "/tmp/f\($0)") }
+        var sent: Set<URL> = []
+        var up: [URL] = []
+        var failOn: URL? = files[2]
+        let send: (URL) async throws -> Void = { f in
+            if f == failOn { throw Down() }
+            up.append(f)
+        }
+        do {
+            try await Upload.sendEach(files, sent: &sent, send)
+            XCTFail("the third file fails")
+        } catch {}
+        XCTAssertEqual(up, Array(files[0..<2]))
+        XCTAssertEqual(sent, Set(files[0..<2]))
+        failOn = nil
+        try await Upload.sendEach(files, sent: &sent, send)
+        XCTAssertEqual(up, files)
+        XCTAssertEqual(sent, Set(files))
+        try await Upload.sendEach(files, sent: &sent, send)
+        XCTAssertEqual(up, files)
+    }
+
     func testPhotoNameKeepsLibraryNameAndAddsUpperCaseExtension() {
         let heic = URL(fileURLWithPath: "/tmp/x/a.heic")
         XCTAssertEqual(Upload.photoName(suggested: "IMG_1234", file: heic), "IMG_1234.HEIC")

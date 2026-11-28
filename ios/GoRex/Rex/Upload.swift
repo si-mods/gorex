@@ -42,6 +42,17 @@ enum Upload {
         try await stream.waitForClose()
     }
 
+    /// Sends each of files that is not in sent, in order, and adds it to
+    /// sent once it is up. A failure at one file leaves those before it in
+    /// sent, so a second call sends the rest only: the server types each
+    /// file's path as it arrives, and a file sent twice would be typed twice.
+    static func sendEach(_ files: [URL], sent: inout Set<URL>, _ send: (URL) async throws -> Void) async throws {
+        for f in files where !sent.contains(f) {
+            try await send(f)
+            sent.insert(f)
+        }
+    }
+
     /// A photo's file name: the name the library suggests, as IMG_1234, with
     /// the extension of the file it gave, upper case as the camera's are.
     nonisolated static func photoName(suggested: String?, file: URL) -> String {

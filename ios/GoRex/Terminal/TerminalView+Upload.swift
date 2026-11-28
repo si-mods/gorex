@@ -6,8 +6,9 @@ import UniformTypeIdentifiers
 /// files, or files picked, go into the temporary folder of the server's
 /// machine (Upload), and their paths are pasted, as the app pastes those of
 /// files dropped on a pane of a host. The keyboard comes back as the picker
-/// closes, if it was up; ⌘ spins while the files go up, and an alert tells
-/// of one that failed.
+/// closes, if it was up; ⌘ spins while the files go up, and a toast tells
+/// how it went: Uploading, then Uploaded, or the error with Retry
+/// (docs/IOS-034-toasts.md).
 extension TerminalView: UIDocumentPickerDelegate {
     func addPhoto() {
         // Once: the picker may be up, or going.
@@ -55,21 +56,65 @@ extension TerminalView: UIDocumentPickerDelegate {
     }
 
     /// Sends the files that files puts into a folder of its own, one after
-    /// another, and removes the folder.
+    /// another. The folder goes when the files are sent, or when the
+    /// failure's toast ends with no Retry.
     private func upload(_ files: @escaping (URL) async throws -> [URL]) {
         let dir = FileManager.default.temporaryDirectory.appending(path: "Uploads").appending(path: UUID().uuidString)
+        send(files, into: dir, staged: nil)
+    }
+
+    /// One try. A toast shows it: Uploading, then Uploaded. A failure
+    /// turns it into the error with Retry, which stays until used or
+    /// closed. Retry sends the files staged and not yet sent, so it needs
+    /// no picker again, and a file that went up is not typed twice. The
+    /// toast does not name the folder: the server's answer to a stream
+    /// upload has no path (docs/IOS-034-toasts.md).
+    private func send(_ files: @escaping (URL) async throws -> [URL], into dir: URL, staged: [URL]?, sent: Set<URL> = []) {
         bar.uploading += 1
         Task {
+            var list = staged
+            var done = sent
+            var toast: UUID?
             do {
-                for f in try await files(dir) {
+                if list == nil { list = try await files(dir) }
+                let names = (list ?? []).filter { !done.contains($0) }
+                toast = Toasts.shared.progress(names.count == 1
+                    ? String(localized: "Uploading \(names[0].lastPathComponent)")
+                    : String(localized: "Uploading \(names.count) files"))
+                try await Upload.sendEach(names, sent: &done) { f in
                     try await session.host.upload(f, block: session.block, session: session.session)
                 }
+                Toasts.shared.settle(toast, with: Toast(kind: .status, text: String(localized: "Uploaded"), seconds: 3))
+                await Self.remove(dir)
             } catch {
-                failed(error)
+                let text = String(localized: "Can't Upload: \(Toast.oneLine(error.localizedDescription))")
+                // A staging that failed part-way left sources moved and
+                // copies half made: a retry of it would fail again. The
+                // folder goes, and the error has no Retry; the user picks
+                // again.
+                guard let kept = list else {
+                    await Self.remove(dir)
+                    Toasts.shared.settle(toast, with: Toast(kind: .error, text: text, seconds: Toast.lifetime(text)))
+                    bar.uploading -= 1
+                    return
+                }
+                let keptDone = done
+                let retry = Toast.Choice(label: String(localized: "Retry")) { [weak self] in
+                    if let self {
+                        self.send(files, into: dir, staged: kept, sent: keptDone)
+                    } else {
+                        Task { await Self.remove(dir) }
+                    }
+                }
+                Toasts.shared.settle(toast, with: Toast(kind: .error, text: text, button: retry, seconds: nil,
+                                                        commit: { Task { await Self.remove(dir) } }))
             }
-            await Task.detached { try? FileManager.default.removeItem(at: dir) }.value
             bar.uploading -= 1
         }
+    }
+
+    nonisolated private static func remove(_ dir: URL) async {
+        await Task.detached { try? FileManager.default.removeItem(at: dir) }.value
     }
 
     /// Copies a photo's original file into dir, named as the library
@@ -90,10 +135,6 @@ extension TerminalView: UIDocumentPickerDelegate {
                 })
             }
         }
-    }
-
-    private func failed(_ error: Error) {
-        alert(String(localized: "Can't Upload"), error.localizedDescription)
     }
 
     /// Tells of a problem; the keyboard comes back once it is read, if it

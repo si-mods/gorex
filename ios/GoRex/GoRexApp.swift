@@ -146,6 +146,7 @@ struct GoRexApp: App {
                 .environment(spaces)
                 .promptSheet(store)
                 .sshHostKeyAlert()
+                .toastHost()
                 .preferredColorScheme(ScreenStyle.shared.terminal ?? Self.colorScheme(scheme))
                 .background { SystemScheme().accessibilityHidden(true) }
                 .onAppear(perform: Self.startGhostty)
