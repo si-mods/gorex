@@ -258,6 +258,42 @@ func TestTerminalTheme(t *testing.T) {
 	}
 }
 
+func TestBlockListDirBatchingAndLimits(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test's program is a Unix one")
+	}
+	f := startFixture(t)
+	dir := t.TempDir()
+	for i := range 300 {
+		sub := filepath.Join(dir, "d"+strconv.Itoa(i))
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	regFile := filepath.Join(dir, "plain.txt")
+	if err := os.WriteFile(regFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Symlink(filepath.Join(dir, "missing-target"), filepath.Join(dir, "d_broken"))
+
+	c, sid, block := f.sessionWith(t, rex.CreateOptions{Dir: dir, Command: []string{"/bin/sh", "-c", "sleep 60"}})
+
+	res := blockCall(t, c, sid, block, "list_dir", map[string]any{"path": dir, "limit": 260})
+	if res["status"] != "ok" || res["truncated"] != true || len(res["entries"].([]any)) != 260 {
+		t.Fatalf("capped list_dir = status=%v truncated=%v len=%d", res["status"], res["truncated"], len(res["entries"].([]any)))
+	}
+
+	full := blockCall(t, c, sid, block, "list_dir", map[string]any{"path": dir, "files": true})
+	if full["status"] != "ok" || full["truncated"] != false || len(full["entries"].([]any)) != 301 {
+		t.Fatalf("full list_dir = status=%v truncated=%v len=%d, want 301", full["status"], full["truncated"], len(full["entries"].([]any)))
+	}
+
+	notDir := blockCall(t, c, sid, block, "list_dir", map[string]any{"path": regFile})
+	if notDir["status"] != "not_dir" {
+		t.Fatalf("regular file list_dir = %v, want not_dir", notDir["status"])
+	}
+}
+
 // TestProcessForegroundChild: a session started with a command reports
 // its program in the foreground, where the command is the session's own
 // process rather than one a shell runs.

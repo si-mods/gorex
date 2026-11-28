@@ -148,13 +148,15 @@ func agentCommand(shell, id, resolvedPath string) []string {
 // never interpolated into a shell command string (docs/MOD-016-peer-delegation.md).
 func agentCommandWithArgs(shell, _, resolvedPath string, extra []string) []string {
 	if shell != "" && supportsLoginExec(shell) {
-		if len(extra) == 0 {
-			return []string{shell, "-lic", "exec " + shellQuote(resolvedPath)}
+		if q, ok := pathQuoter(shell)(resolvedPath); ok {
+			if len(extra) == 0 {
+				return []string{shell, "-lic", "exec " + q}
+			}
+			if filepath.Base(shell) == "fish" {
+				return append([]string{shell, "-lic", "exec " + q + " $argv", "--"}, extra...)
+			}
+			return append([]string{shell, "-lic", "exec " + q + ` "$@"`, "--"}, extra...)
 		}
-		if filepath.Base(shell) == "fish" {
-			return append([]string{shell, "-lic", "exec " + shellQuote(resolvedPath) + " $argv", "--"}, extra...)
-		}
-		return append([]string{shell, "-lic", "exec " + shellQuote(resolvedPath) + ` "$@"`, "--"}, extra...)
 	}
 	if len(extra) == 0 {
 		return []string{resolvedPath}
@@ -167,11 +169,6 @@ func findAgentBinary(agentID, home, shell string) (string, bool) {
 	sh := resolveUserShell(shell)
 	dirs := agentSearchDirs(home, sh)
 	return findExecutableInDirs(dirs, agentID)
-}
-
-// shellQuote single-quotes a path for a POSIX shell command line.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func supportsLoginExec(shell string) bool {

@@ -58,22 +58,22 @@ type ContentState struct {
 func StateFor(info *rex.SessionInfo, windowTitle, blockProgram, blockLabel, sessionLabel string) ContentState {
 	u := rex.MostUrgent(info.Statuses, info.StatusSeen)
 	var rec *Record
-	program := blockProgram
+	program := cleanText(blockProgram)
 	if u != nil && u.State != "idle" {
 		rec = &Record{ID: u.ID, State: u.State, Kind: u.Kind}
 		if u.Progress >= 0 {
 			p := u.Progress
 			rec.Progress = &p
 		}
-		if t := strings.TrimSpace(u.Title); t != "" {
-			rec.Title = cut(t, MaxText, MaxTextBytes)
+		if t := cleanText(u.Title); t != "" {
+			rec.Title = t
 		}
 		if !u.Updated.IsZero() {
 			sec := float64(u.Updated.Unix() - ReferenceDate)
 			rec.Updated = &sec
 		}
-		if u.App != "" {
-			program = u.App
+		if app := cleanText(u.App); app != "" {
+			program = app
 		}
 	}
 	line := ""
@@ -92,25 +92,33 @@ func StateFor(info *rex.SessionInfo, windowTitle, blockProgram, blockLabel, sess
 	}
 }
 
-// cutTitle returns the first of the labels that is not blank, trimmed
+// cleanText cleans s with ShownText, trims whitespace, and cuts to MaxText.
+func cleanText(s string) string {
+	t := strings.TrimSpace(ShownText(s))
+	if t == "" {
+		return ""
+	}
+	return cut(t, MaxText, MaxTextBytes)
+}
+
+// cutTitle returns the first of the labels that is not blank, cleaned, trimmed
 // and cut to MaxText.
 func cutTitle(labels ...string) string {
 	for _, l := range labels {
-		if l = strings.TrimSpace(l); l != "" {
-			return cut(l, MaxText, MaxTextBytes)
+		if l = cleanText(l); l != "" {
+			return l
 		}
 	}
 	return ""
 }
 
-// statusText is a record's message as one line, "" when it is blank.
+// statusText is a record's message as one line, "" when it is blank, collapsing
+// CR/LF runs into single spaces before ShownText (matching TerminalLive.swift).
 func statusText(s string) string {
-	return strings.TrimSpace(strings.Map(func(r rune) rune {
-		if r == '\n' || r == '\r' {
-			return ' '
-		}
-		return r
-	}, s))
+	joined := strings.Join(strings.FieldsFunc(s, func(r rune) bool {
+		return r == '\n' || r == '\r'
+	}), " ")
+	return strings.TrimSpace(ShownText(joined))
 }
 
 // cut returns s cut to at most max characters and at most bytes UTF-8

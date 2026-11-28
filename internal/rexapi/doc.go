@@ -99,5 +99,6 @@
 //
 // block_event events are sent for what the gateway sees change while it
 // watches a block; the state a block had before the gateway started is
-// not replayed.
+// not replayed. Setting GOREX_REXAPI_TRACE=1 enables diagnostic wire
+// logging (trace.go), redacting query credentials on HTTP request lines.
 package rexapi

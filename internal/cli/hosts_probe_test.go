@@ -141,9 +141,12 @@ func TestHostsProbe(t *testing.T) {
 		t.Fatalf("got[0].Agents = %+v, want claude", got[0].Agents)
 	}
 
-	// h2: offline saved host with redacted error.
-	if got[1].Online || got[1].Name != "offline-box" || !strings.Contains(got[1].Error, "<redacted>") {
+	// h2: offline saved host with scrubbed error.
+	if got[1].Online || got[1].Name != "offline-box" || !strings.Contains(got[1].Error, "<address>") {
 		t.Fatalf("got[1] = %+v", got[1])
+	}
+	if scrubbed := sanitizeProbeError("dial nodekey:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef failed", ""); strings.Contains(scrubbed, "0123456789abcdef") {
+		t.Fatalf("sanitizeProbeError leaked key: %q", scrubbed)
 	}
 
 	// Tailnet host: online, deduplicated against "builder".

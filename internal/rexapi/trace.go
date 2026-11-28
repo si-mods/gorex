@@ -2,6 +2,7 @@ package rexapi
 
 import (
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -53,7 +54,30 @@ func traceRequests(next http.Handler) http.Handler {
 				h = append(h, k+"="+v)
 			}
 		}
-		tracef("http %s %s %s from %s [%s]", r.Method, r.URL.RequestURI(), r.Proto, r.RemoteAddr, strings.Join(h, " "))
+		tracef("http %s %s %s from %s [%s]", r.Method, redactTraceURI(r.URL), r.Proto, r.RemoteAddr, strings.Join(h, " "))
 		next.ServeHTTP(w, r)
 	})
+}
+
+func redactTraceURI(u *url.URL) string {
+	if u == nil || u.RawQuery == "" {
+		if u == nil {
+			return ""
+		}
+		return u.RequestURI()
+	}
+	q := u.Query()
+	changed := false
+	for _, secret := range []string{"k", "ticket"} {
+		if q.Has(secret) {
+			q.Set(secret, "(redacted)")
+			changed = true
+		}
+	}
+	if !changed {
+		return u.RequestURI()
+	}
+	cp := *u
+	cp.RawQuery = q.Encode()
+	return cp.RequestURI()
 }

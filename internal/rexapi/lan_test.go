@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -924,5 +925,16 @@ func TestWebPairURL(t *testing.T) {
 		if got := tc.c.WebPairURL(tc.s, WebOrigin); got != "" {
 			t.Errorf("%s: WebPairURL = %q, want none", name, got)
 		}
+	}
+}
+
+func TestRedactTraceURI(t *testing.T) {
+	u, err := url.Parse("http://192.0.2.10:7297/api/download?ticket=secret-ticket&k=secret-token&other=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := redactTraceURI(u)
+	if strings.Contains(got, "secret-ticket") || strings.Contains(got, "secret-token") || !strings.Contains(got, "other=1") {
+		t.Fatalf("redactTraceURI = %q", got)
 	}
 }

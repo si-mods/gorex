@@ -2,8 +2,10 @@ package rexapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 )
 
@@ -563,6 +566,16 @@ func blockInputMode(c *control, s *mSession, b *mBlock, a args) (any, *apiError)
 	}, nil
 }
 
+const (
+	defaultListDirLimit = 2000
+	maxListDirLimit     = 10000
+	maxConcurrentLists  = 16
+	listDirBatchSize    = 256
+	listDirTimeout      = 10 * time.Second
+)
+
+var listDirSem = make(chan struct{}, maxConcurrentLists)
+
 // dirEntry is one entry of com.superlogical.terminal.list_dir.
 type dirEntry struct {
 	Name    string `json:"name"`
@@ -585,8 +598,9 @@ func blockListDir(c *control, s *mSession, b *mBlock, a args) (any, *apiError) {
 		return nil, aerr
 	}
 	if !set || limit <= 0 {
-		limit = 2000
+		limit = defaultListDirLimit
 	}
+	limit = min(limit, maxListDirLimit)
 	files, _, aerr := a.boolean("files")
 	if aerr != nil {
 		return nil, aerr
@@ -604,46 +618,75 @@ func blockListDir(c *control, s *mSession, b *mBlock, a args) (any, *apiError) {
 	if status != "ok" {
 		return out, nil
 	}
+	deadline := time.Now().Add(listDirTimeout)
+	timer := time.NewTimer(listDirTimeout)
+	select {
+	case listDirSem <- struct{}{}:
+		timer.Stop()
+	case <-timer.C:
+		return nil, errInternal("too many directory listings under way; try again later")
+	}
+	defer func() { <-listDirSem }()
+
 	f, err := os.Open(dir)
 	if err != nil {
 		out["status"] = dirStatus(err)
 		return out, nil
 	}
 	defer f.Close()
-	entries, err := f.ReadDir(-1)
-	if err != nil {
-		out["status"] = dirStatus(err)
-		return out, nil
-	}
+
 	lower := strings.ToLower(prefix)
 	kept := []dirEntry{}
 	truncated := false
-	for _, e := range entries {
-		if lower != "" && !strings.HasPrefix(strings.ToLower(e.Name()), lower) {
-			continue
-		}
-		link := e.Type()&os.ModeSymlink != 0
-		path := filepath.Join(dir, e.Name())
-		entry := dirEntry{Name: e.Name(), Symlink: link}
-		isDir := e.IsDir()
-		if link {
-			if st, err := os.Stat(path); err == nil {
-				isDir = st.IsDir()
-			} else {
-				// A link that leads nowhere is left out.
-				continue
-			}
-		}
-		if files {
-			entry.File = !isDir
-		} else if !isDir {
-			continue
-		}
-		if len(kept) >= limit {
+	firstBatch := true
+	for !truncated {
+		if time.Now().After(deadline) {
 			truncated = true
 			break
 		}
-		kept = append(kept, entry)
+		entries, err := f.ReadDir(listDirBatchSize)
+		if err != nil && !errors.Is(err, io.EOF) && firstBatch && len(entries) == 0 {
+			out["status"] = dirStatus(err)
+			return out, nil
+		}
+		firstBatch = false
+		for _, e := range entries {
+			if time.Now().After(deadline) {
+				truncated = true
+				break
+			}
+			if lower != "" && !strings.HasPrefix(strings.ToLower(e.Name()), lower) {
+				continue
+			}
+			link := e.Type()&os.ModeSymlink != 0
+			entryPath := filepath.Join(dir, e.Name())
+			entry := dirEntry{Name: e.Name(), Symlink: link}
+			isDir := e.IsDir()
+			if link {
+				if st, err := os.Stat(entryPath); err == nil {
+					isDir = st.IsDir()
+				} else {
+					// A link that leads nowhere is left out.
+					continue
+				}
+			}
+			if files {
+				entry.File = !isDir
+			} else if !isDir {
+				continue
+			}
+			if len(kept) >= limit {
+				truncated = true
+				break
+			}
+			kept = append(kept, entry)
+		}
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				truncated = true
+			}
+			break
+		}
 	}
 	out["entries"] = kept
 	out["truncated"] = truncated
@@ -653,28 +696,37 @@ func blockListDir(c *control, s *mSession, b *mBlock, a args) (any, *apiError) {
 // resolveDir resolves a list_dir path the way a program in the terminal
 // would, and reports it with whether it can be read.
 func resolveDir(path, cwd, home string) (string, string) {
-	switch {
-	case path == "":
+	if path == "" {
 		if cwd == "" {
 			cwd = home
 		}
 		return cwd, "ok"
-	case path == "~":
-		return home, "ok"
-	case strings.HasPrefix(path, "~/"):
-		return filepath.Join(home, path[2:]), "ok"
-	case filepath.IsAbs(path):
-		if p, ok := rex.VolumePath(path); ok {
-			return p, "ok"
+	}
+	if path == "~" {
+		if home == "" {
+			return "~", "missing"
 		}
+		path = home
+	} else if rest, ok := strings.CutPrefix(path, "~"); ok && (rest[0] == '/' || rest[0] == filepath.Separator) {
+		if home == "" {
+			return filepath.Clean(path), "missing"
+		}
+		path = filepath.Join(home, rest[1:])
+	}
+	norm, ok := rex.VolumePath(path)
+	if !ok {
 		// A device, a pipe, or a path rooted with no volume: reading it
 		// may wait on it or contact another host, so nothing here reads
 		// it, and it names no directory.
 		return filepath.Clean(path), "missing"
-	case cwd == "":
-		return filepath.Clean(path), "ok"
 	}
-	return filepath.Join(cwd, path), "ok"
+	if filepath.IsAbs(norm) {
+		return norm, "ok"
+	}
+	if cwd == "" {
+		return filepath.Clean(norm), "ok"
+	}
+	return filepath.Join(cwd, norm), "ok"
 }
 
 // dirStatus is what list_dir reports for a directory it could not read.
@@ -782,8 +834,10 @@ func parseTheme(a args) (theme, *apiError) {
 			return t, aerr
 		}
 		if v != "" {
-			if aerr := checkColor(name, v); aerr != nil {
-				return t, aerr
+			var cerr *apiError
+			v, cerr = normalizeThemeColor(name, v)
+			if cerr != nil {
+				return t, cerr
 			}
 		}
 		switch name {
@@ -800,12 +854,15 @@ func parseTheme(a args) (theme, *apiError) {
 		return t, aerr
 	}
 	if present && palette != nil {
-		for _, p := range palette {
-			if aerr := checkPalette(p); aerr != nil {
-				return t, aerr
+		normPalette := make([]string, len(palette))
+		for i, p := range palette {
+			np, cerr := normalizePalette(p)
+			if cerr != nil {
+				return t, cerr
 			}
+			normPalette[i] = np
 		}
-		t.Palette = palette
+		t.Palette = normPalette
 	}
 	scheme, _, aerr := a.str("scheme")
 	if aerr != nil {
@@ -818,29 +875,42 @@ func parseTheme(a args) (theme, *apiError) {
 	return t, nil
 }
 
-// checkColor checks a color of set_theme: hex RRGGBB or #RRGGBB.
-func checkColor(name, v string) *apiError {
+// normalizeThemeColor checks a color of set_theme (RGB, #RGB, RRGGBB or
+// #RRGGBB), expanding 3-digit shorthand to 6 digits while preserving existing
+// 6-digit strings.
+func normalizeThemeColor(name, v string) (string, *apiError) {
 	hex := strings.TrimPrefix(v, "#")
-	if len(hex) != 6 {
-		return errBadRequest("%s is a color, RRGGBB or #RRGGBB", name)
+	if len(hex) != 3 && len(hex) != 6 {
+		return "", errBadRequest("%s is a color, RRGGBB or #RRGGBB", name)
 	}
-	if _, err := strconv.ParseUint(hex, 16, 32); err != nil {
-		return errBadRequest("%s is a color, RRGGBB or #RRGGBB", name)
+	norm, ok := layout.NormalizeHex6(hex)
+	if !ok {
+		return "", errBadRequest("%s is a color, RRGGBB or #RRGGBB", name)
 	}
-	return nil
+	if len(hex) == 6 {
+		return v, nil
+	}
+	if strings.HasPrefix(v, "#") {
+		return "#" + norm, nil
+	}
+	return norm, nil
 }
 
-// checkPalette checks a palette change: index=RRGGBB.
-func checkPalette(v string) *apiError {
+// normalizePalette checks and normalizes a palette change: index=RRGGBB.
+func normalizePalette(v string) (string, *apiError) {
 	i := strings.IndexByte(v, '=')
 	if i <= 0 {
-		return errBadRequest("a palette change is index=RRGGBB, not %q", v)
+		return "", errBadRequest("a palette change is index=RRGGBB, not %q", v)
 	}
 	n, err := strconv.Atoi(v[:i])
 	if err != nil || n < 0 || n > 255 {
-		return errBadRequest("a palette index is 0 to 255, not %q", v[:i])
+		return "", errBadRequest("a palette index is 0 to 255, not %q", v[:i])
 	}
-	return checkColor("palette", v[i+1:])
+	col, aerr := normalizeThemeColor("palette", v[i+1:])
+	if aerr != nil {
+		return "", aerr
+	}
+	return v[:i+1] + col, nil
 }
 
 // setTheme stores a block's colors and tells the streams that show it.

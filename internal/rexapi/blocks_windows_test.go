@@ -16,13 +16,16 @@ func TestResolveDirRefusesDevices(t *testing.T) {
 		`\??\C:\Windows`,
 		`\\?\GLOBALROOT\Device\NamedPipe\x`,
 		`\\;LanmanRedirector\localhost\pipe\x`,
+		`\Windows`,
+		`/Windows`,
+		`\\server`,
 	} {
 		if dir, status := resolveDir(p, `C:\work`, `C:\Users\x`); status != "missing" {
 			t.Errorf("resolveDir(%q) = %q, %q, want missing", p, dir, status)
 		}
 	}
-	for _, p := range []string{`C:\work\sub`, `\\server\share\sub`} {
-		if _, status := resolveDir(p, "", ""); status != "ok" {
+	for _, p := range []string{`C:\work\sub`, `\\server\share\sub`, `C:sub`, `~\sub`} {
+		if _, status := resolveDir(p, "", `C:\Users\x`); status != "ok" {
 			t.Errorf("resolveDir(%q) = %q, want ok", p, status)
 		}
 	}
