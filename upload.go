@@ -204,7 +204,7 @@ func (a *App) send(p *Pane, items []uploadItem) {
 		}
 		err := errHostAway
 		if c := h.next(ts.ctx, nil, hostWait); c != nil {
-			err = c.Paste(sid, pastedPaths(shell, pasted))
+			err = c.PasteHuman(sid, pastedPaths(shell, pasted))
 		}
 		if err != nil && ts.ctx.Err() == nil {
 			update(func() {

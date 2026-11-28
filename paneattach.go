@@ -145,12 +145,20 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// where the program drew its output, not the pane's, and the view
 	// only asks the session for the size the pane fits.
 	opts.ResizeByConn = true
+	onHumanInput := func() {
+		update(func() {
+			if p.info.AgentActor.Active {
+				p.clearAgentLocal()
+			}
+		})
+	}
 	if p.host != nil {
 		p.remote = newHostStream(p.host, p.SID, cols, rows)
 		// A host's streams claim the focus on each attach only while the
 		// user is at this machine.
 		p.remote.present = userPresent
 		p.remote.onChange = func() { update(func() {}) }
+		p.remote.onInput = onHumanInput
 		opts.Conn = p.remote
 	} else {
 		// A pane of this machine's session attaches through the app's
@@ -160,6 +168,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		p.stream = newLocalStream(a.client, p.SID, cols, rows)
 		p.stream.SetPresent(userPresent)
 		p.stream.onChange = func() { update(func() {}) }
+		p.stream.onInput = onHumanInput
 		opts.Conn = p.stream
 	}
 	// A paste offers the bytes the clipboard holds here, an image's among
@@ -174,6 +183,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// back from a device that holds it (SizeLock): the session gets the
 	// pane's size again.
 	opts.OnPaste = func(d transfer.Data) bool {
+		p.clearAgentLocal()
 		if p.host == nil {
 			a.takeSize(p)
 		}
@@ -220,7 +230,13 @@ func (a *App) attach(p *Pane, cols, rows int) {
 			}
 			p.claimSize()
 		}
-		return a.dispatchKey(mods, key)
+		if a.dispatchKey(mods, key) {
+			return true
+		}
+		if mods&ui.Super == 0 {
+			p.clearAgentLocal()
+		}
+		return false
 	}
 	opts.OnTitle = func(title string) {
 		update(func() { p.title = title })
@@ -274,7 +290,7 @@ func (a *App) pasteText(p *Pane, text string) {
 		var err error
 		switch {
 		case host == nil:
-			err = client.Paste(sid, text)
+			err = client.PasteHuman(sid, text)
 		case remote != nil:
 			err = remote.Paste(text)
 		}

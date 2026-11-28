@@ -4,6 +4,7 @@ package rex
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -53,6 +54,12 @@ type session struct {
 	// metadata (docs/MOD-016-peer-delegation.md).
 	delegatedFrom  string
 	delegatedAgent string
+	// createdBy, lastCLIInputAt, agentLabel, and agentActive track CLI and
+	// delegated actor state under mu (docs/DSK-016-agent-pane-highlight.md).
+	createdBy      string
+	lastCLIInputAt time.Time
+	agentLabel     string
+	agentActive    bool
 	// changed tells the server's subscribers that what the list shows of
 	// the session changed; sampler looks, as the session prints, whether
 	// its title or foreground program did, from seen.
@@ -531,10 +538,30 @@ func newSession(id string, o CreateOptions, owner string, changed func(), sp spa
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
+	createdBy := normalizeCreatedBy(o.CreatedBy)
+	var lastCLI time.Time
+	var agentLabel string
+	var agentActive bool
+	if createdBy != ActorHuman {
+		def := ActorCLI
+		if createdBy == ActorDelegate {
+			def = ActorDelegate
+		}
+		agentLabel = cmp.Or(NormalizeAgentName(o.Agent), def)
+		agentActive = true
+		if o.StampInput || len(o.Command) > 0 {
+			lastCLI = now
+		}
+	}
 	s := &session{
-		id: id, shell: name, command: len(o.Command) > 0, created: time.Now(), p: p, dir: dir, home: home,
-		runAs:   sp.user,
-		clients: map[*attached]struct{}{}, changed: changed,
+		id: id, shell: name, command: len(o.Command) > 0, created: now, p: p, dir: dir, home: home,
+		runAs:          sp.user,
+		createdBy:      createdBy,
+		lastCLIInputAt: lastCLI,
+		agentLabel:     agentLabel,
+		agentActive:    agentActive,
+		clients:        map[*attached]struct{}{}, changed: changed,
 		cols: cols, rows: rows, done: make(chan struct{}),
 	}
 	s.graphics.home = home
@@ -962,9 +989,29 @@ func (s *session) input(a *attached, p []byte) {
 	}
 }
 
+func normalizeCreatedBy(v string) string {
+	switch v {
+	case ActorCLI, ActorDelegate:
+		return v
+	default:
+		return ActorHuman
+	}
+}
+
 // inputProgram types what a client that is not attached sends, without
 // the terminal's answers a program would read as its own.
 func (s *session) inputProgram(p []byte) error {
+	return s.inputProgramWithActor(p, "", "", false)
+}
+
+// inputFromActor types p on behalf of actor ("cli", "delegate", or "human"),
+// stamping lastCLIInputAt for non-human actors or clearing the active agent
+// mark when a human UI action sent p.
+func (s *session) inputFromActor(p []byte, actor, agent string) error {
+	return s.inputProgramWithActor(p, actor, agent, true)
+}
+
+func (s *session) inputProgramWithActor(p []byte, actor, agent string, trackActor bool) error {
 	p = dropReplies(p)
 	s.mu.Lock()
 	if s.exited {
@@ -975,13 +1022,35 @@ func (s *session) inputProgram(p []byte) error {
 		s.mu.Unlock()
 		return nil
 	}
-	s.lastInput = time.Now()
+	now := time.Now()
+	s.lastInput = now
+	if trackActor {
+		if actor == ActorHuman {
+			s.agentActive = false
+		} else {
+			def := ActorCLI
+			if actor == ActorDelegate {
+				def = ActorDelegate
+			}
+			s.lastCLIInputAt = now
+			s.agentLabel = cmp.Or(NormalizeAgentName(agent), s.agentLabel, def)
+			s.agentActive = true
+		}
+	}
 	s.mu.Unlock()
 	s.write(p)
 	if s.typed != nil {
 		s.typed()
 	}
 	return nil
+}
+
+// clearAgent clears the session's active agent mark when a person types in a
+// UI client.
+func (s *session) clearAgent() {
+	s.mu.Lock()
+	s.agentActive = false
+	s.mu.Unlock()
 }
 
 // write types p into the program, one writer at a time: a writer's p
@@ -997,10 +1066,15 @@ func (s *session) write(p []byte) {
 // newlines as returns. A console that drops the terminal's paste event, a
 // ConPTY on Windows, gets a paste this way.
 func (s *session) paste(text string) error {
+	return s.pasteFromActor(text, ActorCLI, "")
+}
+
+// pasteFromActor writes text as a paste and updates actor bookkeeping.
+func (s *session) pasteFromActor(text, actor, agent string) error {
 	if text == "" {
 		return nil
 	}
-	return s.inputProgram(encodePaste(text, s.bracketedPaste()))
+	return s.inputFromActor(encodePaste(text, s.bracketedPaste()), actor, agent)
 }
 
 // bracketedPaste reports whether the foreground program has enabled DEC
@@ -1040,6 +1114,7 @@ func (s *session) admit(a *attached, p []byte) []byte {
 		prev := s.authorityLocked()
 		if a != nil && len(dropFocusReports(typed)) > 0 {
 			s.typist = a
+			s.agentActive = false
 		}
 		if a != nil && s.answererLocked() != a {
 			p = typed
@@ -1091,6 +1166,12 @@ func (s *session) info() SessionInfo {
 	in := SessionInfo{
 		ID: s.id, Shell: s.shell, Command: s.command, Created: s.created, Owner: s.owner,
 		DelegatedFrom: s.delegatedFrom, DelegatedAgent: s.delegatedAgent,
+		AgentActor: AgentActor{
+			CreatedBy:      cmp.Or(s.createdBy, ActorHuman),
+			LastCLIInputAt: s.lastCLIInputAt,
+			Agent:          s.agentLabel,
+			Active:         s.agentActive && !s.exited,
+		},
 		Title: title, LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Output: s.output, Bells: int(s.bells.Load()), Exited: s.exited, ExitCode: s.code,
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,

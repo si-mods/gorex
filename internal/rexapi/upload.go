@@ -665,7 +665,7 @@ func (g *Gateway) typeUploadPaths(sid string, paths []string) *apiError {
 	if len(words) == 0 {
 		return errInternal("no path pastes in this shell")
 	}
-	if err := g.opt.Client.Input(sid, []byte(strings.Join(words, " "))); err != nil {
+	if err := g.opt.Client.InputHuman(sid, []byte(strings.Join(words, " "))); err != nil {
 		return errInternal("typing: %v", err)
 	}
 	return nil

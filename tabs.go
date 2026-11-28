@@ -125,6 +125,10 @@ func tabWidth(c *ui.Context, t *Tab) float32 {
 		bw, _ := c.MeasureText(0, ui.Span{Text: h.label(), Size: badgeSize, Weight: 600})
 		badge = min(bw, badgeMaxW) + 12 + 6
 	}
+	if ag, _, _, ok := t.agentBadgeAt(c.Now()); ok {
+		bw, _ := c.MeasureText(0, ui.Span{Text: ag, Size: badgeSize, Weight: 600})
+		badge += min(bw, badgeMaxW) + 12 + 6
+	}
 	return min(max(9+tiles+6+w+6+18+10, tabMinW), tabMaxW) + badge
 }
 
@@ -252,6 +256,9 @@ func (a *App) tabRest(c *ui.Context, k *colors, t *Tab, active, hovered bool) {
 	}
 	if dragged, over := ui.DragOver[*Pane](label); over && (t.Root == nil || dragged.host == t.host()) {
 		label.Border(1.5, k.busy.Alpha(0.6))
+	}
+	if ag, fade, rem, ok := t.agentBadgeAt(c.Now()); ok {
+		agentBadge(c, k, ag, fade, rem)
 	}
 	a.tabEnd(c, k, t, hovered)
 }

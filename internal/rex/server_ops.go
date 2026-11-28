@@ -98,7 +98,7 @@ func serverOp(op string) serverOpFunc {
 		})
 	case "paste":
 		return withSession(func(_ *Server, ss *session, req Request, _ string, _ *keptConn) (any, error) {
-			return nil, ss.paste(req.Paste)
+			return nil, ss.pasteFromActor(req.Paste, req.Actor, req.Agent)
 		})
 	case "capture":
 		return withSession(doCapture)
@@ -173,6 +173,9 @@ func (s *Server) doCreate(req Request, peer string, _ *keptConn) (any, error) {
 	o := CreateOptions{}
 	if req.Create != nil {
 		o = *req.Create
+	}
+	if o.CreatedBy == ActorCLI {
+		o.StampInput = true
 	}
 	ss, err := s.create(o, peer)
 	if err != nil {
@@ -350,7 +353,7 @@ func (s *Server) doShutdown(req Request, _ string, _ *keptConn) (any, error) {
 }
 
 func doInput(_ *Server, ss *session, req Request, _ string, _ *keptConn) (any, error) {
-	return nil, ss.inputProgram(req.Bytes)
+	return nil, ss.inputFromActor(req.Bytes, req.Actor, req.Agent)
 }
 
 func doKey(_ *Server, ss *session, req Request, _ string, _ *keptConn) (any, error) {

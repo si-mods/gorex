@@ -191,7 +191,7 @@ func methodBlockEvent(c *control, a args) (any, *apiError) {
 			return nil, aerr
 		}
 		c.g.takeOnInput(c.rec, s, b)
-		if err := client.Paste(b.sid, text); err != nil {
+		if err := client.PasteHuman(b.sid, text); err != nil {
 			return nil, errInternal("pasting: %v", err)
 		}
 	case "mouse":

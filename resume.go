@@ -104,7 +104,7 @@ func (a *App) runResume(p *Pane, cmd string) {
 	}
 	p.resume = nil
 	if c := a.clientOf(p.host); c != nil {
-		if err := c.Input(p.SID, []byte(cmd+"\r")); err != nil {
+		if err := c.InputHuman(p.SID, []byte(cmd+"\r")); err != nil {
 			log.Printf("running %q again: %v", cmd, err)
 		}
 	}

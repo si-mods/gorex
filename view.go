@@ -800,6 +800,8 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 			drawPaneDrop(card, k, z, a.cardR(k))
 			a.paneDrop = shownDrop{p, z}
 		}
+	} else {
+		drawAgentPaneBorder(c, card, k, p, a.cardR(k))
 	}
 	if dragged, ok := ui.Drop[*Pane](card); ok {
 		// The zone shown last, where the user let go: the pointer may

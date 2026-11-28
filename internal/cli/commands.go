@@ -150,14 +150,14 @@ Usage:
   gorex [-S HOST] layout [--json]
   gorex [-S HOST] projects [--json]
   gorex [-S HOST] project ls [--json] | new [NAME] [--dir DIR] [--space SPACE] [--color COLOR] [--json] | rename PROJECT NAME [--json] | move SESSION PROJECT [--json]
-  gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
+  gorex split [-s SESSION] [--down] [--dir DIR] [--agent NAME] [--json] [-- COMMAND...]
   gorex close [-s SESSION] [--tab] [--json]
   gorex rename [-s SESSION] [--json] NAME
   gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear
   gorex pack ls [--json] | search [QUERY] [--json] | install [--name ID] [--json] ID|DIR|GIT_URL | update [--check] [ID] | rm ID
-  gorex [-S HOST] new [--project PROJECT] [--dir DIR] [--name NAME] [--json] [-- COMMAND...]
-  gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] [--json] TEXT...
-  gorex paste [-s SESSION] [-w TAB] [-b PANE] [--json] TEXT...
+  gorex [-S HOST] new [--project PROJECT] [--dir DIR] [--name NAME] [--agent NAME] [--json] [-- COMMAND...]
+  gorex send [-s SESSION] [-w TAB] [-b PANE] [--key KEY]... [--enter] [--agent NAME] [--json] [TEXT...]
+  gorex paste [-s SESSION] [-w TAB] [-b PANE] [--agent NAME] [--json] TEXT...
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
   gorex events
   gorex hosts [ls] [--probe] [--timeout D] [--json]
@@ -168,7 +168,7 @@ Usage:
   gorex remote status [--json] | tailscale on|off | address | key | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
   gorex server restart | upgrade
   gorex update (Linux)
-  gorex config path | config check [FILE] | config reload
+  gorex config path | config check [FILE] | config reload | config get agent-highlight [--json] | config set agent-highlight on|off
   gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
   gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--json] [--dir DIR] -- COMMAND...
@@ -471,7 +471,14 @@ func layoutCmd(args []string, out, errOut io.Writer) (int, bool) {
 // splitRequest is the layout change split asks for: a new pane beside
 // target, running command when one is given.
 func splitRequest(target string, vertical bool, dir string, command []string) rex.LayoutCommand {
-	return rex.LayoutCommand{Op: "pane.split", SID: target, Vertical: vertical, Dir: dir, Command: command}
+	return splitRequestWithAgent(target, vertical, dir, rex.ActorCLI, command)
+}
+
+func splitRequestWithAgent(target string, vertical bool, dir, agent string, command []string) rex.LayoutCommand {
+	return rex.LayoutCommand{
+		Op: "pane.split", SID: target, Vertical: vertical, Dir: dir, Command: command,
+		CreatedBy: rex.ActorCLI, Agent: agent,
+	}
 }
 
 func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
@@ -479,6 +486,7 @@ func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	sid := targetFlag(fs)
 	down := fs.Bool("down", false, "split below, not right")
 	dir := fs.String("dir", "", "directory to start in")
+	agent := fs.String("agent", rex.ActorCLI, "agent label for the tab badge")
 	asJSON := fs.Bool("json", false, "print JSON")
 	if code, stop := parse(fs, args); stop {
 		return code, true
@@ -497,7 +505,7 @@ func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
-	res, err := c.Command(splitRequest(target, *down, *dir, fs.Args()))
+	res, err := c.Command(splitRequestWithAgent(target, *down, *dir, *agent, fs.Args()))
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -573,6 +581,7 @@ func newCmd(args []string, out, errOut io.Writer) (int, bool) {
 	project := fs.String("project", "", "project name or ID (defaults to the current/active project)")
 	dir := fs.String("dir", "", "directory to start in (defaults to the project's folder)")
 	name := fs.String("name", "", "tab label")
+	agent := fs.String("agent", rex.ActorCLI, "agent label for the tab badge")
 	asJSON := fs.Bool("json", false, "print JSON")
 	if code, stop := parse(fs, args); stop {
 		return code, true
@@ -592,7 +601,6 @@ func newCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-
 	raw, err := c.Layout()
 	if err != nil {
 		fmt.Fprintln(errOut, err)
@@ -612,11 +620,13 @@ func newCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 
 	res, err := c.Command(rex.LayoutCommand{
-		Op:      "tab.create",
-		Space:   proj.ID,
-		Dir:     resolvedDir,
-		Name:    *name,
-		Command: fs.Args(),
+		Op:        "tab.create",
+		Space:     proj.ID,
+		Dir:       resolvedDir,
+		Name:      *name,
+		Command:   fs.Args(),
+		CreatedBy: rex.ActorCLI,
+		Agent:     *agent,
 	})
 	if err != nil {
 		fmt.Fprintln(errOut, err)
@@ -687,6 +697,7 @@ func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 	enter := fs.Bool("enter", false, "press Return after the text and keys")
 	var keyNames stringList
 	fs.Var(&keyNames, "key", "press a key or chord after the text, as alt+m, ctrl+c or escape (repeatable)")
+	agent := fs.String("agent", rex.ActorCLI, "agent label for the tab badge")
 	asJSON := fs.Bool("json", false, "print JSON")
 	if code, stop := parse(fs, args); stop {
 		return code, true
@@ -720,7 +731,7 @@ func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return codeFor(err), true
 	}
 	if text != "" {
-		if err := c.Input(target, []byte(text)); err != nil {
+		if err := c.InputWithAgent(target, []byte(text), *agent); err != nil {
 			fmt.Fprintln(errOut, err)
 			return codeFor(err), true
 		}
@@ -732,7 +743,7 @@ func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 	}
 	if *enter && len(keys) > 0 {
-		if err := c.Input(target, []byte("\r")); err != nil {
+		if err := c.InputWithAgent(target, []byte("\r"), *agent); err != nil {
 			fmt.Fprintln(errOut, err)
 			return codeFor(err), true
 		}
@@ -746,6 +757,7 @@ func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 func pasteCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("paste", errOut)
 	sid := targetFlag(fs)
+	agent := fs.String("agent", rex.ActorCLI, "agent label for the tab badge")
 	asJSON := fs.Bool("json", false, "print JSON")
 	if code, stop := parse(fs, args); stop {
 		return code, true
@@ -765,7 +777,7 @@ func pasteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
-	if err := c.Paste(target, text); err != nil {
+	if err := c.PasteWithAgent(target, text, *agent); err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
@@ -861,11 +873,11 @@ func (c *nopConn) Close() error {
 
 func configCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if len(args) == 0 {
-		fmt.Fprintln(errOut, "gorex config: use path, check or reload")
+		fmt.Fprintln(errOut, "gorex config: use path, check, reload, get or set")
 		return ExitUsage, true
 	}
 	if serverTarget != "" && args[0] != "reload" {
-		fmt.Fprintln(errOut, "gorex config: path and check read this machine's file")
+		fmt.Fprintf(errOut, "gorex config: %s uses this machine's settings\n", args[0])
 		return ExitUsage, true
 	}
 	switch args[0] {
@@ -909,8 +921,59 @@ func configCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitFailed, true
 		}
 		return ExitOK, true
+	case "get":
+		fs := flagSet("config get", errOut)
+		asJSON := fs.Bool("json", false, "print JSON")
+		rest := args[1:]
+		var key string
+		if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
+			key, rest = rest[0], rest[1:]
+		}
+		if code, stop := parse(fs, rest); stop {
+			return code, true
+		}
+		if key == "" && fs.NArg() > 0 {
+			key = fs.Arg(0)
+		}
+		if key != "agent-highlight" && key != "agentHighlight" {
+			fmt.Fprintln(errOut, "gorex config get: supported key: agent-highlight")
+			return ExitUsage, true
+		}
+		on, err := readAgentHighlight()
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return ExitFailed, true
+		}
+		if *asJSON {
+			WriteJSON(out, map[string]bool{"agentHighlight": on})
+		} else if on {
+			fmt.Fprintln(out, "on")
+		} else {
+			fmt.Fprintln(out, "off")
+		}
+		return ExitOK, true
+	case "set":
+		if len(args) != 3 {
+			fmt.Fprintln(errOut, "gorex config set: usage: gorex config set agent-highlight on|off")
+			return ExitUsage, true
+		}
+		key, val := args[1], args[2]
+		if key != "agent-highlight" && key != "agentHighlight" {
+			fmt.Fprintf(errOut, "gorex config set: unknown key %q (supported: agent-highlight)\n", key)
+			return ExitUsage, true
+		}
+		on, ok := parseOnOff(val)
+		if !ok {
+			fmt.Fprintf(errOut, "gorex config set %s: want on or off, got %q\n", key, val)
+			return ExitUsage, true
+		}
+		if err := writeAgentHighlight(on); err != nil {
+			fmt.Fprintln(errOut, err)
+			return ExitFailed, true
+		}
+		return ExitOK, true
 	}
-	fmt.Fprintln(errOut, "gorex config: use path, check or reload")
+	fmt.Fprintln(errOut, "gorex config: use path, check, reload, get or set")
 	return ExitUsage, true
 }
 

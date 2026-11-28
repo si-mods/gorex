@@ -269,6 +269,9 @@ func (s *session) Key(k KeyInput) error {
 	if exited {
 		return ErrSessionEnded
 	}
+	if k.Action != "release" {
+		s.clearAgent()
+	}
 	return s.inputProgram(s.vt.EncodeKey(ev))
 }
 

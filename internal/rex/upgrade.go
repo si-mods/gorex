@@ -4,6 +4,7 @@ package rex
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -89,6 +90,9 @@ type sessionState struct {
 	StatusSeen time.Time `json:"statusSeen,omitzero"`
 	// ProgramIcon is the custom icon reported by the program (OSC 7502).
 	ProgramIcon *ProgramIcon `json:"programIcon,omitempty"`
+	// AgentActor preserves CLI and delegated actor state across in-place
+	// upgrades (docs/DSK-016-agent-pane-highlight.md).
+	AgentActor *AgentActor `json:"agentActor,omitempty"`
 }
 
 // consoleHandles are the handles of a pseudo console besides its input,
@@ -229,6 +233,12 @@ func (s *session) state() sessionState {
 		Output: s.output, Bells: s.bells.Load(), LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Reaped: s.reaped, Exited: s.exited, Code: s.code,
 		Statuses: s.status.list(), StatusSeen: s.status.seen, ProgramIcon: s.icon.get(), Images: s.graphics.sequences(),
+		AgentActor: &AgentActor{
+			CreatedBy:      cmp.Or(s.createdBy, ActorHuman),
+			LastCLIInputAt: s.lastCLIInputAt,
+			Agent:          s.agentLabel,
+			Active:         s.agentActive,
+		},
 	}
 	st.Screen, st.Title = s.view()
 	st.Screen = bytes.TrimSuffix(st.Screen, s.graphics.replay())
@@ -310,9 +320,16 @@ func Resume(path string) error {
 func resumeSession(st sessionState, changed func()) (*session, error) {
 	s := &session{
 		id: st.ID, shell: st.Shell, command: st.Command, created: st.Created, dir: st.Dir, owner: st.Owner, changed: changed,
-		clients: map[*attached]struct{}{},
-		output:  st.Output, lastOutput: st.LastOutput, lastInput: st.LastInput,
+		createdBy: ActorHuman,
+		clients:   map[*attached]struct{}{},
+		output:    st.Output, lastOutput: st.LastOutput, lastInput: st.LastInput,
 		cols: clampSize(st.Cols), rows: clampSize(st.Rows), done: make(chan struct{}),
+	}
+	if st.AgentActor != nil {
+		s.createdBy = normalizeCreatedBy(st.AgentActor.CreatedBy)
+		s.lastCLIInputAt = st.AgentActor.LastCLIInputAt
+		s.agentLabel = st.AgentActor.Agent
+		s.agentActive = st.AgentActor.Active
 	}
 	if err := s.newVT(); err != nil {
 		return nil, err

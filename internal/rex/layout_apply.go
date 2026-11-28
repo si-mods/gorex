@@ -229,18 +229,22 @@ type applying struct {
 
 // start returns a new pane's leaf, starting its session in the first pass.
 func (a *applying) start(dir string, cols, rows int, command []string) (*layout.Node, error) {
-	return a.startIn(dir, false, cols, rows, command)
+	return a.startInWithActor(dir, false, cols, rows, command, "", "")
 }
 
 // startIn is start, of a session that starts in dir or not at all when
 // strict (CreateOptions.DirStrict).
 func (a *applying) startIn(dir string, strict bool, cols, rows int, command []string) (*layout.Node, error) {
+	return a.startInWithActor(dir, strict, cols, rows, command, "", "")
+}
+
+func (a *applying) startInWithActor(dir string, strict bool, cols, rows int, command []string, createdBy, agent string) (*layout.Node, error) {
 	if a.n < len(a.made) {
 		n := *a.made[a.n]
 		a.n++
 		return &n, nil
 	}
-	n, err := a.s.startPane(dir, strict, cols, rows, command)
+	n, err := a.s.startPaneWithActor(dir, strict, cols, rows, command, createdBy, agent)
 	if err != nil {
 		return nil, err
 	}
@@ -388,12 +392,19 @@ func indexOf(root, n *layout.Node) int { return slices.Index(layout.Leaves(root)
 
 // startPane starts the session of a new pane, as the window does.
 func (s *Server) startPane(dir string, strict bool, cols, rows int, command []string) (*layout.Node, error) {
+	return s.startPaneWithActor(dir, strict, cols, rows, command, "", "")
+}
+
+func (s *Server) startPaneWithActor(dir string, strict bool, cols, rows int, command []string, createdBy, agent string) (*layout.Node, error) {
 	<-s.hostDone
 	var env []string
 	if s.host.Name != "" {
 		env = []string{"GOREX_CLIENT=" + s.host.Name}
 	}
-	ss, err := s.createHeld(CreateOptions{Command: command, Dir: dir, DirStrict: strict, Cols: cols, Rows: rows, Env: env}, "")
+	ss, err := s.createHeld(CreateOptions{
+		Command: command, Dir: dir, DirStrict: strict, Cols: cols, Rows: rows, Env: env,
+		CreatedBy: createdBy, Agent: agent,
+	}, "")
 	if err != nil {
 		return nil, err
 	}
@@ -914,7 +925,7 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 	if cols <= 0 || rows <= 0 {
 		cols, rows = s.largest(w)
 	}
-	n, err := a.startIn(dir, strict, cols, rows, c.Command)
+	n, err := a.startInWithActor(dir, strict, cols, rows, c.Command, c.CreatedBy, c.Agent)
 	if err != nil {
 		res.Code, res.Error = "create_failed", err.Error()
 		if strings.HasPrefix(err.Error(), FolderMissing) {
@@ -1030,7 +1041,7 @@ func (s *Server) split(p spot, c LayoutCommand, a *applying) LayoutCommand {
 	default:
 		cols = max(cols/2, 10)
 	}
-	n, err := a.start(dir, cols, rows, c.Command)
+	n, err := a.startInWithActor(dir, false, cols, rows, c.Command, c.CreatedBy, c.Agent)
 	if err != nil {
 		res.Code, res.Error = "create_failed", err.Error()
 		return res
