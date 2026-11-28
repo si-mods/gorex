@@ -168,3 +168,68 @@ final class ComposerUITests: XCTestCase {
         add(s)
     }
 }
+
+/// Regression tests for regular-width split view on iPhone (iPhone Duo
+/// unfolded or large iPhone landscape) with Composer Mode active.
+final class SplitViewComposerUITests: XCTestCase {
+    func testSplitViewSearchDoesNotOverlapComposer() throws {
+        continueAfterFailure = false
+        addTeardownBlock {
+            XCUIDevice.shared.orientation = .portrait
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["-composerMode", "YES"]
+        app.launch()
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let notifAlert = springboard.alerts.firstMatch
+        if notifAlert.waitForExistence(timeout: 3) {
+            for b in ["Don’t Allow", "Don't Allow", "Allow"] where notifAlert.buttons[b].exists {
+                notifAlert.buttons[b].tap()
+                break
+            }
+        }
+
+        let demo = app.buttons["Try Demo Mode"]
+        if demo.waitForExistence(timeout: 15) {
+            demo.tap()
+        }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let row = app.buttons["Shell"]
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+        row.tap()
+
+        let composer = app.otherElements["composer"]
+        let sendBtn = app.buttons.matching(identifier: "Send").firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertTrue(sendBtn.waitForExistence(timeout: 5))
+        shot("split-sidebar-open")
+
+        func assertNoSearchOverlap(_ context: String) {
+            let searches = app.buttons.matching(NSPredicate(format: "label == 'Search' OR identifier == 'magnifyingglass'")).allElementsBoundByIndex
+            for btn in searches where btn.exists && !btn.frame.isEmpty {
+                XCTAssertFalse(btn.frame.intersects(composer.frame),
+                               "Search button \(btn.frame) overlaps composer \(composer.frame) (\(context))")
+                XCTAssertFalse(btn.frame.intersects(sendBtn.frame),
+                               "Search button \(btn.frame) overlaps Send \(sendBtn.frame) (\(context))")
+            }
+        }
+
+        assertNoSearchOverlap("sidebar open")
+
+        let hideSidebar = app.buttons["Hide Sidebar"]
+        if hideSidebar.waitForExistence(timeout: 3) {
+            hideSidebar.tap()
+            _ = hideSidebar.waitForNonExistence(timeout: 5)
+            shot("split-sidebar-hidden")
+            assertNoSearchOverlap("sidebar hidden")
+        }
+    }
+
+    private func shot(_ name: String) {
+        let s = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        s.name = name
+        s.lifetime = .keepAlways
+        add(s)
+    }
+}
