@@ -178,18 +178,57 @@ final class ComposerUITests: XCTestCase {
         shot("composer-mode-rest")
 
         // Raising the keyboard keeps the key bar hidden under the compose bar,
-        // grows the bar cleanly for multiple lines, keeps +, mic, and Send
-        // aligned to the bottom row, and routes Backspace to the compose field.
+        // stays single-row for a short line, reflows into the Grok-style
+        // full-width top text field above `[ +, …, Mic, Send ]` once text has
+        // multiple lines, never collapses height once scrollable past fieldMax,
+        // and collapses back to the 48 pt single-row pill once cleared.
         message.tap()
         if app.keyboards.element.waitForExistence(timeout: 5) {
             message.typeText("abc" + XCUIKeyboardKey.delete.rawValue)
             XCTAssertEqual(message.value as? String, "ab")
-            message.typeText("\nline 2\nline 3")
-            XCTAssertGreaterThan(bar.frame.height, 64)
-            XCTAssertGreaterThan(addBtn.frame.midY, message.frame.midY)
-            XCTAssertGreaterThan(sendBtn.frame.midY, message.frame.midY)
+            XCTAssertLessThanOrEqual(bar.frame.height, 56)
+            XCTAssertLessThan(abs(addBtn.frame.midY - message.frame.midY), 4)
+
+            message.typeText("\nline 2\nline 3: full-width multiline compose layout")
+            XCTAssertGreaterThan(bar.frame.height, 96)
+            // Full-width top message field spanning above both + (left) and Send (right).
+            XCTAssertLessThanOrEqual(message.frame.minX, addBtn.frame.midX)
+            XCTAssertGreaterThanOrEqual(message.frame.maxX, sendBtn.frame.midX)
+            XCTAssertLessThanOrEqual(message.frame.maxY, addBtn.frame.minY + 2)
             XCTAssertLessThan(abs(addBtn.frame.midY - sendBtn.frame.midY), 4)
-            shot("composer-mode-keyboard")
+            shot("composer-multiline-dark")
+
+            // Exceeding fieldMax (~7 lines) enables scrolling without collapsing
+            // the message field's height back to a single line.
+            message.typeText("\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9")
+            XCTAssertGreaterThan(bar.frame.height, 180)
+            XCTAssertGreaterThan(message.frame.height, 130)
+            shot("composer-mode-scrollable")
+
+            // Sending clears the draft and collapses back to the 48 pt single-row pill.
+            sendBtn.tap()
+            let collapsed = app.otherElements.matching(NSPredicate(
+                format: "identifier == 'composer' AND frame.size.height <= 56")).firstMatch
+            XCTAssertTrue(collapsed.waitForExistence(timeout: 5))
+            shot("composer-collapsed-after-send")
+        }
+    }
+
+    /// Verifies Composer Mode over a light terminal theme ("Apple System Colors Light")
+    /// renders a crisp dark Send button with white arrow and full-width multi-line CJK text.
+    func testLightThemeMultiline() throws {
+        app.terminate()
+        app.launchArguments = ["-composerMode", "YES", "-theme", "Apple System Colors Light"]
+        app.launch()
+        try terminal()
+        let bar = app.otherElements["composer"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 10))
+        shot("composer-light-rest")
+        message.tap()
+        if app.keyboards.element.waitForExistence(timeout: 5) {
+            message.typeText("测试一下\n\n多行文字现在自动展开为全宽编辑区\n下方独立放置附件、麦克风与发送按钮")
+            XCTAssertGreaterThan(bar.frame.height, 110)
+            shot("composer-light-multiline-zh")
         }
     }
 

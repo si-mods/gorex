@@ -508,3 +508,8 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Trigger:** the app shows an error's message (`localizedDescription`, a server `message`) in a toast, banner or label.
 - **Check:** the message is read as the user sees it. A server message written for API clients names ids ("no block block:… in session:…"); map its code to words instead. A one-line limit cuts the reason, the part that matters, so the text wraps or shows in full.
 - **Source:** #1101 made failures one-line toasts of the raw message; #1274 wraps them to three lines and maps `not_found` to "It has closed on the computer."
+
+### Growing `UITextView` in a compose bar
+- **Trigger:** a `UITextView` (`Composer.swift`) grows with its lines up to a cap and turns `isScrollEnabled` on past it, or shares its row with side buttons.
+- **Check:** drive its height with an explicit `heightAnchor` constraint from `sizeThatFits` (`UITextView.intrinsicContentSize` drops to `noIntrinsicMetric` as soon as `isScrollEnabled` turns true and collapses a constraint-less field to its minimum), pin `contentOffset` to `.zero` while `!isScrollEnabled` so synchronous newline layout cannot shift line 1 out of view, and move side buttons (`+`, mic, Send) to a bottom row once text wraps so multi-line drafts get the full bar width without re-parenting `UITextView` (which drops IME `markedTextRange`). Inside `UIGlassEffect`, tint prominent filled button icons with `.alwaysOriginal` so vibrancy does not turn dark icons white on white.
+- **Source:** #1268 kept `[+, field, mic, Send]` inline across multi-line drafts and relied on `intrinsicContentSize` up to `fieldMax`; this PR reflows multi-line drafts to full width with an explicit height constraint.

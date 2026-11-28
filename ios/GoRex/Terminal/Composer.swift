@@ -2,18 +2,15 @@ import UIKit
 import UniformTypeIdentifiers
 
 /// The compose bar (docs/IOS-025-composer.md, docs/IOS-030-composer-centric-bar.md),
-/// up while Settings > Terminal's Composer Mode is on: a single-row glass pill
-/// pinned above the keyboard or home indicator — a circular attach/actions
-/// menu on the left, a message field that names its block and grows upward with
-/// its lines, and the screen's mic plus Send on the right — over the terminal,
-/// which stays in view with the keyboard. Typing and dictation land in the
-/// field to read before Send. On iPhone, `More Keys` in `+` unfurls the inline
-/// 7-key strip across the pill on demand. The attachments stage in a folder of
-/// the temporary directory, emptied as a send goes. Send uploads them as one
-/// batch, whose paths the server types together once every file is up, then
-/// pastes the text and sends Return: the paths land first and the lot is one
-/// submission. A send with no text submits the paths alone, and empties the bar
-/// for the next message.
+/// up while Settings > Terminal's Composer Mode is on: an adaptive glass pill
+/// pinned above the keyboard or home indicator. At rest or with a short single
+/// line, `+`, the message field, the screen's mic, and Send share one 48 pt row;
+/// as soon as the draft wraps or includes a newline, the field reflows in place
+/// across the full width above a dedicated `[ +  …  Mic  Send ]` bottom action
+/// row (Grok-style), growing smoothly up to `fieldMax` before scrolling. On
+/// iPhone, `More Keys` in `+` unfurls the inline 7-key strip across the bottom
+/// row on demand. Attachments stage in a temporary folder and upload as one
+/// batch before pasting the text and sending Return.
 final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     /// A staged attachment: its file in the folder, and its thumbnail for
     /// the strip, nil for a file that is no image.
@@ -38,7 +35,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private var filePick: FilePick?
     private var shot: CameraShot?
 
-    let field = UITextView()
+    let field: UITextView = ComposeTextView()
     /// The placeholder, which names the block the message goes to.
     private let hint = UILabel()
     /// Right-edge fade mask for long placeholders so they fade out cleanly
@@ -53,8 +50,9 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private let attach = QuickKeyButton()
     private let send = QuickKeyButton()
     /// Inline quick-keys pill on iPhone (IOS-030): unfurls full-width across
-    /// the single row from `+` › `More Keys` (temporarily fading `inputRow`) so
-    /// all 7 keys meet Apple HIG's 44 × 44 pt minimum tap target.
+    /// the bottom 36 pt action row from `+` › `More Keys` so all 7 keys meet
+    /// Apple HIG's 44 × 44 pt minimum tap target while keeping any multi-line
+    /// draft visible above it.
     private let quickPill = QuickPillView()
     private let quickKeys = QuickStackView()
     private var quickKeysExpanded = false
@@ -67,19 +65,32 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private var steered = false
     private var arrow: String? { didSet { pad.arrow = arrow } }
     private let tick = UIImpactFeedbackGenerator(style: .light)
-    /// Where the screen's mic lands, between the message field and Send.
+    /// Where the screen's mic lands, beside Send.
     let micHolder: UIView = QuickPillView()
     /// Where the screen's single-row voice controls land while dictating,
-    /// cross-fading with `inputRow` inside the compose pill.
+    /// cross-fading across the bottom 36 pt row inside the compose pill.
     let voiceHolder = UIView()
-    private let inputRow = QuickStackView()
+    private let fieldClip = UIView()
+    private let scrollFadeMask: CAGradientLayer = {
+        let g = CAGradientLayer()
+        g.startPoint = CGPoint(x: 0.5, y: 0)
+        g.endPoint = CGPoint(x: 0.5, y: 1)
+        return g
+    }()
+    private var lastScrollFade: (w: CGFloat, h: CGFloat, top: Bool, bottom: Bool)?
+    private let rowBox = RowBoxView()
+    private var compactConstraints: [NSLayoutConstraint] = []
+    private var expandedConstraints: [NSLayoutConstraint] = []
+    private var fieldHeight: NSLayoutConstraint!
+    private var multiLine = false
+    private var lastRowWidth: CGFloat = 0
     private var voiceActive = false
     /// Press-and-hold anywhere on the compose bar to dictate (push-to-talk):
     /// holding starts voice recording, releasing converts speech to text.
     private lazy var holdVoice = UILongPressGestureRecognizer(target: self, action: #selector(heldForVoice))
     private var holdingVoice = false
-    /// Downward drag or flick anywhere on the bar dismisses the keyboard first
-    /// if up, and closes Composer Mode on the next swipe.
+    /// Downward drag or flick on the bar dismisses the keyboard first if up,
+    /// and closes Composer Mode on the next swipe.
     private lazy var dismissPan = UIPanGestureRecognizer(target: self, action: #selector(draggedDown))
     /// Called when the user closes Composer Mode via swipe-down or menu.
     var onClose: (() -> Void)?
@@ -100,6 +111,10 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private static let fieldMin: CGFloat = 36
     private static let vPad: CGFloat = 6
     private static let hPad: CGFloat = 6
+    private static let buttonGap: CGFloat = 8
+    private static let rowGap: CGFloat = 8
+    private static let compactInsets = UIEdgeInsets(top: 7.5, left: 4, bottom: 7.5, right: 4)
+    private static let expandedInsets = UIEdgeInsets(top: 8, left: 10, bottom: 6, right: 10)
     /// Gap between the compose bar and the keyboard or safe area below it.
     static let gap: CGFloat = 6
     /// Resting height of the single-row pill with no attachments (48 pt).
@@ -107,8 +122,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// Bottom inset reserved so the resting bar never covers the program's own
     /// input row (54 pt).
     static let baseInset: CGFloat = baseHeight + gap
-    /// How tall the field grows before it scrolls instead.
-    private static let fieldMax: CGFloat = 112
+    /// How tall the full-width field grows (~7 lines) before it scrolls instead.
+    private static let fieldMax: CGFloat = 160
 
     init(terminal: TerminalView) {
         self.terminal = terminal
@@ -176,10 +191,13 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         attach.addAction(UIAction { _ in Haptics.tapped() }, for: .touchDown)
 
         field.font = .systemFont(ofSize: 17)
+        field.textColor = .label
         field.backgroundColor = .clear
-        field.textContainerInset = UIEdgeInsets(top: 7.5, left: 4, bottom: 7.5, right: 4)
+        field.textContainerInset = Self.compactInsets
         field.textContainer.lineFragmentPadding = 0
         field.isScrollEnabled = false
+        field.showsVerticalScrollIndicator = false
+        field.alwaysBounceVertical = false
         field.delegate = self
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -203,16 +221,42 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         micHolder.backgroundColor = .tertiarySystemFill
         micHolder.layer.cornerRadius = 18
 
+        let sendSym = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        let sendActiveFg = UIColor { $0.userInterfaceStyle == .dark ? .black : .white }
+        let sendActiveBg = UIColor { $0.userInterfaceStyle == .dark ? .white : .black }
+        let sendIdleFg = UIColor.tertiaryLabel
         var s = UIButton.Configuration.filled()
-        s.image = UIImage(systemName: "arrow.up")
-        s.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        s.image = UIImage(systemName: "arrow.up", withConfiguration: sendSym)?
+            .withTintColor(sendIdleFg, renderingMode: .alwaysOriginal)
         s.baseBackgroundColor = .tertiarySystemFill
-        s.baseForegroundColor = .label
+        s.baseForegroundColor = sendIdleFg
         s.background.cornerRadius = 18
         send.configuration = s
+        send.configurationUpdateHandler = { [weak self] btn in
+            UIView.performWithoutAnimation {
+                guard var cfg = btn.configuration else { return }
+                let sending = self?.sending == true
+                cfg.showsActivityIndicator = sending
+                if sending {
+                    cfg.image = nil
+                    cfg.baseBackgroundColor = .tertiarySystemFill
+                    cfg.baseForegroundColor = .secondaryLabel
+                } else if btn.isEnabled {
+                    cfg.image = UIImage(systemName: "arrow.up", withConfiguration: sendSym)?
+                        .withTintColor(sendActiveFg, renderingMode: .alwaysOriginal)
+                    cfg.baseBackgroundColor = sendActiveBg
+                    cfg.baseForegroundColor = sendActiveFg
+                } else {
+                    cfg.image = UIImage(systemName: "arrow.up", withConfiguration: sendSym)?
+                        .withTintColor(sendIdleFg, renderingMode: .alwaysOriginal)
+                    cfg.baseBackgroundColor = .tertiarySystemFill
+                    cfg.baseForegroundColor = sendIdleFg
+                }
+                btn.configuration = cfg
+            }
+        }
         send.accessibilityLabel = String(localized: "Send")
         send.isEnabled = false
-        send.alpha = 0.45
         send.addAction(UIAction { _ in Haptics.tapped() }, for: .touchDown)
         send.addAction(UIAction { [weak self] _ in self?.sendNow() }, for: .touchUpInside)
 
@@ -362,21 +406,17 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         quickPill.translatesAutoresizingMaskIntoConstraints = false
         quickPill.addSubview(quickKeys)
 
-        for v in [attach, field, micHolder, send] { inputRow.addArrangedSubview(v) }
-        inputRow.axis = .horizontal
-        inputRow.alignment = .bottom
-        inputRow.spacing = 6
-        inputRow.translatesAutoresizingMaskIntoConstraints = false
-
         voiceHolder.alpha = 0
         voiceHolder.isHidden = true
         voiceHolder.translatesAutoresizingMaskIntoConstraints = false
 
-        let rowBox = QuickPillView()
+        field.translatesAutoresizingMaskIntoConstraints = false
+        fieldClip.addSubview(field)
         rowBox.translatesAutoresizingMaskIntoConstraints = false
-        rowBox.addSubview(inputRow)
-        rowBox.addSubview(quickPill)
-        rowBox.addSubview(voiceHolder)
+        for v in [fieldClip, attach, micHolder, send, quickPill, voiceHolder] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            rowBox.addSubview(v)
+        }
 
         let body = QuickStackView(arrangedSubviews: [strip, rowBox])
         body.axis = .vertical
@@ -389,23 +429,41 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         micDown.cancelsTouchesInView = false
         micHolder.addGestureRecognizer(micDown)
 
-        attach.translatesAutoresizingMaskIntoConstraints = false
-        field.translatesAutoresizingMaskIntoConstraints = false
-        send.translatesAutoresizingMaskIntoConstraints = false
         strip.translatesAutoresizingMaskIntoConstraints = false
-        micHolder.translatesAutoresizingMaskIntoConstraints = false
-        let inputBottomFit = inputRow.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor)
-        inputBottomFit.priority = .defaultHigh
+        fieldHeight = fieldClip.heightAnchor.constraint(equalToConstant: Self.fieldMin)
+        compactConstraints = [
+            fieldClip.leadingAnchor.constraint(equalTo: attach.trailingAnchor, constant: Self.buttonGap),
+            fieldClip.trailingAnchor.constraint(equalTo: micHolder.leadingAnchor, constant: -Self.buttonGap),
+            fieldClip.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor),
+        ]
+        expandedConstraints = [
+            fieldClip.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
+            fieldClip.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
+            fieldClip.bottomAnchor.constraint(equalTo: attach.topAnchor, constant: -Self.rowGap),
+        ]
         NSLayoutConstraint.activate([
             body.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: Self.hPad),
             body.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -Self.hPad),
             body.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: Self.vPad),
             body.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -Self.vPad),
-            inputRow.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
-            inputRow.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
-            inputRow.topAnchor.constraint(equalTo: rowBox.topAnchor),
-            inputRow.bottomAnchor.constraint(lessThanOrEqualTo: rowBox.bottomAnchor),
-            inputBottomFit,
+            fieldClip.topAnchor.constraint(equalTo: rowBox.topAnchor),
+            fieldHeight,
+            field.leadingAnchor.constraint(equalTo: fieldClip.leadingAnchor),
+            field.trailingAnchor.constraint(equalTo: fieldClip.trailingAnchor),
+            field.topAnchor.constraint(equalTo: fieldClip.topAnchor),
+            field.bottomAnchor.constraint(equalTo: fieldClip.bottomAnchor),
+            attach.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
+            attach.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor),
+            attach.widthAnchor.constraint(equalToConstant: 36),
+            attach.heightAnchor.constraint(equalToConstant: 36),
+            send.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
+            send.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor),
+            send.widthAnchor.constraint(equalToConstant: 36),
+            send.heightAnchor.constraint(equalToConstant: 36),
+            micHolder.trailingAnchor.constraint(equalTo: send.leadingAnchor, constant: -Self.buttonGap),
+            micHolder.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor),
+            micHolder.widthAnchor.constraint(equalToConstant: 36),
+            micHolder.heightAnchor.constraint(equalToConstant: 36),
             quickPill.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
             quickPill.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
             quickPill.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor),
@@ -415,7 +473,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             quickKeys.centerYAnchor.constraint(equalTo: quickPill.centerYAnchor),
             voiceHolder.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
             voiceHolder.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
-            voiceHolder.centerYAnchor.constraint(equalTo: rowBox.centerYAnchor),
+            voiceHolder.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor),
             voiceHolder.heightAnchor.constraint(equalToConstant: Self.fieldMin),
             thumbs.leadingAnchor.constraint(equalTo: strip.contentLayoutGuide.leadingAnchor),
             thumbs.trailingAnchor.constraint(equalTo: strip.contentLayoutGuide.trailingAnchor),
@@ -423,18 +481,10 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             thumbs.bottomAnchor.constraint(equalTo: strip.contentLayoutGuide.bottomAnchor),
             thumbs.heightAnchor.constraint(equalTo: strip.frameLayoutGuide.heightAnchor, constant: -4),
             strip.heightAnchor.constraint(equalToConstant: 52),
-            attach.widthAnchor.constraint(equalToConstant: 36),
-            attach.heightAnchor.constraint(equalToConstant: 36),
-            micHolder.widthAnchor.constraint(equalToConstant: 36),
-            micHolder.heightAnchor.constraint(equalToConstant: 36),
-            send.widthAnchor.constraint(equalToConstant: 36),
-            send.heightAnchor.constraint(equalToConstant: 36),
             hint.leadingAnchor.constraint(equalTo: field.frameLayoutGuide.leadingAnchor, constant: 4),
             hint.centerYAnchor.constraint(equalTo: field.frameLayoutGuide.centerYAnchor),
             hint.trailingAnchor.constraint(equalTo: field.frameLayoutGuide.trailingAnchor, constant: -4),
-            field.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.fieldMin),
-            field.heightAnchor.constraint(lessThanOrEqualToConstant: Self.fieldMax),
-        ])
+        ] + compactConstraints)
 
         var actions = [
             UIAccessibilityCustomAction(name: String(localized: "Hide Composer")) { [weak self] _ in
@@ -468,7 +518,14 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        let w = rowBox.bounds.width
+        if w > 0, abs(w - lastRowWidth) > 0.5 {
+            lastRowWidth = w
+            updateFieldLayout(animated: false)
+            super.layoutSubviews()
+        }
         field.layoutIfNeeded()
+        updateScrollFade()
         if hint.bounds.width > 0, hint.intrinsicContentSize.width > hint.bounds.width {
             let fade = min(24, hint.bounds.width * 0.25) / hint.bounds.width
             CATransaction.begin()
@@ -486,12 +543,185 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         }
     }
 
+    /// Caps the text view height in tight viewports (such as landscape with
+    /// the software keyboard up) so the bar never overflows the screen top.
+    private var effectiveFieldMax: CGFloat {
+        guard let host = superview, host.bounds.height > 0 else { return Self.fieldMax }
+        let bottomY = frame.maxY > 0 ? frame.maxY : host.bounds.height - host.safeAreaInsets.bottom
+        let available = bottomY - host.safeAreaInsets.top - 56
+        let chrome = Self.vPad * 2 + (multiLine ? Self.fieldMin + Self.rowGap : 0) + (attachments.isEmpty ? 0 : 60)
+        return max(56, min(Self.fieldMax, available - chrome))
+    }
+
+    /// Syncs visibility of the bottom action controls and single-row message
+    /// field when `More Keys` or inline voice dictation is active. In multi-line
+    /// mode, `field` sits above the 36 pt bottom row and stays visible.
+    private func syncChromeVisibility(still: Bool = true) {
+        let hideActions = quickKeysExpanded || voiceActive
+        let hideField = hideActions && !multiLine
+        let hiddenScale = still ? CGAffineTransform.identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
+        for v in [attach, micHolder, send] {
+            v.alpha = hideActions ? 0 : 1
+            v.transform = hideActions ? hiddenScale : .identity
+            v.isUserInteractionEnabled = !hideActions
+        }
+        fieldClip.alpha = hideField ? 0 : 1
+        fieldClip.transform = hideField ? hiddenScale : .identity
+        fieldClip.isUserInteractionEnabled = !hideField
+    }
+
+    /// Softens scrolled multi-line edges so lines never slice abruptly against
+    /// the top or bottom of `fieldClip` when `field.isScrollEnabled` is active.
+    private func updateScrollFade() {
+        let w = fieldClip.bounds.width, h = fieldClip.bounds.height
+        guard field.isScrollEnabled, w > 0, h > 24 else {
+            if fieldClip.layer.mask != nil {
+                fieldClip.layer.mask = nil
+                lastScrollFade = nil
+            }
+            return
+        }
+        let maxY = max(0, field.contentSize.height - field.bounds.height)
+        let fadeTop = field.contentOffset.y > 1
+        let fadeBottom = field.contentOffset.y < maxY - 1
+        guard fadeTop || fadeBottom else {
+            fieldClip.layer.mask = nil
+            lastScrollFade = nil
+            return
+        }
+        if let prev = lastScrollFade, prev.w == w, prev.h == h, prev.top == fadeTop, prev.bottom == fadeBottom {
+            return
+        }
+        lastScrollFade = (w, h, fadeTop, fadeBottom)
+        let tFrac = min(0.18, 12 / h)
+        let bFrac = min(0.15, 10 / h)
+        let clear = UIColor.clear.cgColor
+        let solid = UIColor.black.cgColor
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        scrollFadeMask.frame = fieldClip.bounds
+        scrollFadeMask.colors = [fadeTop ? clear : solid, solid, solid, fadeBottom ? clear : solid]
+        scrollFadeMask.locations = [0, NSNumber(value: Double(tFrac)), NSNumber(value: Double(1 - bFrac)), 1]
+        fieldClip.layer.mask = scrollFadeMask
+        CATransaction.commit()
+    }
+
+    /// Reflows `field` between the compact 48 pt single-row pill and the
+    /// Grok-style full-width two-row card without re-parenting `field` (keeping
+    /// keyboard focus, selection, and IME marked text intact), and updates
+    /// `fieldHeight` + scroll state explicitly so `isScrollEnabled` never
+    /// collapses `intrinsicContentSize`.
+    private func updateFieldLayout(animated: Bool) {
+        let totalW = rowBox.bounds.width > 0
+            ? rowBox.bounds.width
+            : max(220, (bounds.width > 0 ? bounds.width : 353) - Self.hPad * 2)
+        // Single-row inner glyph width: totalW minus attach(36) + gap(8) + gap(8) + mic(36) + gap(8) + send(36) = 132, minus compact horizontal insets(8).
+        let compactInnerW = max(60, totalW - 132 - Self.compactInsets.left - Self.compactInsets.right)
+        let text = field.text ?? ""
+        let hasMarked = field.markedTextRange != nil
+
+        let wantMulti: Bool
+        if text.isEmpty && !hasMarked {
+            wantMulti = false
+        } else if text.contains("\n") {
+            wantMulti = true
+        } else {
+            let probeW = compactInnerW + field.textContainerInset.left + field.textContainerInset.right
+            let compactFitH = field.sizeThatFits(CGSize(width: probeW, height: .greatestFiniteMagnitude)).height
+            let pureTextH = compactFitH - field.textContainerInset.top - field.textContainerInset.bottom
+            let lineH = (field.font ?? .systemFont(ofSize: 17)).lineHeight
+            if !multiLine {
+                wantMulti = pureTextH > lineH * 1.45
+            } else if hasMarked {
+                // Keep layout steady while composing Pinyin/Shuangpin marked text.
+                wantMulti = true
+            } else {
+                wantMulti = pureTextH > lineH * 1.3
+            }
+        }
+
+        let modeChanged = wantMulti != multiLine
+        if modeChanged {
+            multiLine = wantMulti
+            if wantMulti {
+                NSLayoutConstraint.deactivate(compactConstraints)
+                NSLayoutConstraint.activate(expandedConstraints)
+                field.textContainerInset = Self.expandedInsets
+            } else {
+                NSLayoutConstraint.deactivate(expandedConstraints)
+                NSLayoutConstraint.activate(compactConstraints)
+                field.textContainerInset = Self.compactInsets
+            }
+            syncChromeVisibility(still: true)
+        }
+
+        let targetH: CGFloat
+        let tall: Bool
+        if multiLine {
+            let maxH = effectiveFieldMax
+            let rawH = ceil(field.sizeThatFits(CGSize(width: totalW, height: .greatestFiniteMagnitude)).height)
+            tall = rawH > maxH + 0.5
+            targetH = min(max(Self.fieldMin, rawH), maxH)
+        } else {
+            tall = false
+            targetH = Self.fieldMin
+        }
+
+        if field.isScrollEnabled != tall {
+            field.isScrollEnabled = tall
+            field.showsVerticalScrollIndicator = tall
+            if !tall {
+                field.contentOffset = .zero
+            }
+            updateScrollFade()
+        }
+
+        let heightChanged = abs(fieldHeight.constant - targetH) > 0.5
+        if heightChanged {
+            fieldHeight.constant = targetH
+        }
+
+        if modeChanged, animated, window != nil, !UIAccessibility.isReduceMotionEnabled {
+            UIView.animate(withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.92, initialSpringVelocity: 0,
+                           options: [.beginFromCurrentState, .allowUserInteraction]) {
+                (self.superview ?? self).layoutIfNeeded()
+            }
+        } else if modeChanged || heightChanged {
+            setNeedsLayout()
+        }
+    }
+
+    /// Scrolls the active caret (including a trailing newline) cleanly into view
+    /// once the message field exceeds `effectiveFieldMax`.
+    private func scrollCaretToVisible(_ t: UITextView) {
+        guard let end = t.selectedTextRange?.end else { return }
+        t.layoutIfNeeded()
+        let caret = t.caretRect(for: end)
+        let nsLen = (t.text as NSString).length
+        let atEnd = t.selectedRange.location == nsLen && t.selectedRange.length == 0 && t.markedTextRange == nil
+        if atEnd, t.text.hasSuffix("\n") || !caret.origin.y.isFinite || caret.isNull || caret.isInfinite {
+            let bottomY = max(0, t.contentSize.height - t.bounds.height)
+            if abs(t.contentOffset.y - bottomY) > 0.5 {
+                t.setContentOffset(CGPoint(x: 0, y: bottomY), animated: false)
+            }
+            return
+        }
+        guard caret.origin.x.isFinite, caret.origin.y.isFinite, !caret.isNull, !caret.isInfinite else { return }
+        let padded = CGRect(
+            x: caret.minX,
+            y: max(0, caret.minY - t.textContainerInset.top),
+            width: max(1, caret.width),
+            height: caret.height + t.textContainerInset.top + t.textContainerInset.bottom
+        )
+        t.scrollRectToVisible(padded, animated: false)
+    }
+
     /// Where an open lands: the field's keyboard.
     func focus() { field.becomeFirstResponder() }
 
-    /// Cross-fades the input row into the inline single-row voice view while
-    /// dictating, keeping the resting pill height steady without bouncing the
-    /// terminal above it.
+    /// Cross-fades the bottom row into the inline single-row voice view while
+    /// dictating, keeping the resting pill height steady (and keeping any
+    /// multi-line draft visible above it).
     func setVoice(active: Bool) {
         guard active != voiceActive else { return }
         voiceActive = active
@@ -502,10 +732,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         if active {
             voiceHolder.isHidden = false
             voiceHolder.transform = still ? .identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
-            inputRow.isUserInteractionEnabled = false
             let apply = {
-                self.inputRow.alpha = 0
-                self.inputRow.transform = still ? .identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
+                self.syncChromeVisibility(still: still)
                 self.voiceHolder.alpha = 1
                 self.voiceHolder.transform = .identity
             }
@@ -515,10 +743,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
                 UIView.animate(withDuration: 0.26, delay: 0, usingSpringWithDamping: 0.88, initialSpringVelocity: 0, animations: apply)
             }
         } else {
-            inputRow.isUserInteractionEnabled = true
             let apply = {
-                self.inputRow.alpha = 1
-                self.inputRow.transform = .identity
+                self.syncChromeVisibility(still: still)
                 self.voiceHolder.alpha = 0
                 self.voiceHolder.transform = still ? .identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
             }
@@ -631,18 +857,15 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         if expanded {
             quickPill.isHidden = false
             quickPill.isUserInteractionEnabled = false
-            inputRow.isUserInteractionEnabled = false
         } else {
             quickPill.isUserInteractionEnabled = false
-            inputRow.isUserInteractionEnabled = true
         }
         let still = UIAccessibility.isReduceMotionEnabled
         if expanded {
             quickKeys.transform = still ? .identity : CGAffineTransform(scaleX: 0.94, y: 0.94)
         }
         let apply = {
-            self.inputRow.alpha = expanded ? 0 : 1
-            self.inputRow.transform = (expanded && !still) ? CGAffineTransform(scaleX: 0.96, y: 0.96) : .identity
+            self.syncChromeVisibility(still: still)
             self.quickPill.alpha = expanded ? 1 : 0
             self.quickKeys.transform = (expanded || still) ? .identity : CGAffineTransform(scaleX: 0.94, y: 0.94)
         }
@@ -677,7 +900,10 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             if quickKeysExpanded, !quickPill.isHidden, stickBtn.frame.contains(convert(p, to: stickBtn.superview)) {
                 return false
             }
-            if field.isScrollEnabled, field.frame.contains(convert(p, to: field.superview)) {
+            let inField = fieldClip.frame.contains(convert(p, to: rowBox))
+            // Keep vertical drags inside multi-line or scrollable text dedicated
+            // to UITextView cursor placement, selection handles, and scrolling.
+            if inField, field.isScrollEnabled || (multiLine && field.isFirstResponder) {
                 return false
             }
             return true
@@ -686,21 +912,22 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         guard !voiceActive, !sending else { return false }
         if dismissPan.state == .began || dismissPan.state == .changed { return false }
         let p = g.location(in: self)
-        if !attach.isHidden, attach.frame.contains(convert(p, to: attach.superview)) { return false }
-        if !quickPill.isHidden, quickPill.frame.contains(convert(p, to: quickPill.superview)) { return false }
-        if send.frame.contains(convert(p, to: send.superview)) { return false }
+        if !attach.isHidden, attach.alpha > 0, attach.frame.contains(convert(p, to: rowBox)) { return false }
+        if !quickPill.isHidden, quickPill.frame.contains(convert(p, to: rowBox)) { return false }
+        if send.alpha > 0, send.frame.contains(convert(p, to: rowBox)) { return false }
         if !strip.isHidden, strip.frame.contains(convert(p, to: strip.superview)) { return false }
-        // Keep UITextView's own long-press loupe/selection when editing
-        // non-empty text, while still allowing press-and-hold on the mic.
-        if field.isFirstResponder, !(field.text ?? "").isEmpty,
-           !micHolder.frame.contains(convert(p, to: micHolder.superview)) {
+        // Keep UITextView's own long-press loupe/selection when text is in the
+        // field, while still allowing press-and-hold on the mic or empty chrome.
+        if !(field.text ?? "").isEmpty,
+           fieldClip.frame.contains(convert(p, to: rowBox)),
+           !micHolder.frame.contains(convert(p, to: rowBox)) {
             return false
         }
         return true
     }
 
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-        if g === dismissPan, !field.isScrollEnabled, other.view?.isDescendant(of: field) == true {
+        if g === dismissPan, !multiLine, !field.isScrollEnabled, other.view?.isDescendant(of: field) == true {
             return true
         }
         return false
@@ -751,13 +978,22 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     }
 
     func textViewDidChange(_ t: UITextView) {
-        hint.isHidden = !t.text.isEmpty
-        let tall = t.contentSize.height > Self.fieldMax
-        if t.isScrollEnabled != tall {
-            t.isScrollEnabled = tall
-            t.setNeedsLayout()
-        }
+        hint.isHidden = !t.text.isEmpty || t.markedTextRange != nil
+        updateFieldLayout(animated: true)
         update()
+        if t.isScrollEnabled {
+            scrollCaretToVisible(t)
+        }
+    }
+
+    func textViewDidChangeSelection(_ t: UITextView) {
+        guard t.isScrollEnabled, !t.isDragging, !t.isDecelerating else { return }
+        scrollCaretToVisible(t)
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollView === field else { return }
+        updateScrollFade()
     }
 
     /// The photo picker over the terminal; each pick is staged as its
@@ -861,11 +1097,12 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         update()
     }
 
-    /// Send is live while the message or an attachment is there to send.
+    /// Send lights up with the app's accent fill while a message or attachment
+    /// is ready to send.
     private func update() {
-        let on = !sending && (!field.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
+        let on = !sending && (!(field.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
         send.isEnabled = on
-        send.alpha = on ? 1 : 0.45
+        send.setNeedsUpdateConfiguration()
     }
 
     /// Uploads the attachments as one batch — the server types their
@@ -877,16 +1114,14 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         let hasContent = !(field.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
         guard hasContent else { return }
         sending = true
-        update()
         attach.isEnabled = false
-        send.configuration?.showsActivityIndicator = true
+        update()
         terminal.bar.uploading += 1
         Task { [weak self] in
             guard let self else { return }
             defer {
                 sending = false
                 attach.isEnabled = true
-                send.configuration?.showsActivityIndicator = false
                 terminal.bar.uploading -= 1
                 update()
             }
@@ -972,6 +1207,25 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
     private func failed(_ error: Error) {
         Toasts.shared.fail("Can't Upload", error)
+    }
+}
+
+/// Text view that keeps `contentOffset` pinned to `.zero` while non-scrolling,
+/// preventing UIKit from synchronously shifting Line 1 out of view when a
+/// newline or wrap arrives before Auto Layout updates the view's height.
+private final class ComposeTextView: UITextView {
+    override var contentOffset: CGPoint {
+        get { super.contentOffset }
+        set { super.contentOffset = isScrollEnabled ? newValue : .zero }
+    }
+}
+
+/// Inner container of `ComposerBar` that extends vertical hit-testing into the
+/// outer 6 pt concentric padding in both single-row and multi-line layouts so
+/// 36 pt controls at the bottom edge always receive their full 44 pt tap target.
+private final class RowBoxView: UIView {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -4, dy: -6).contains(point)
     }
 }
 
