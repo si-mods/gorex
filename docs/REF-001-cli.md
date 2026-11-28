@@ -52,7 +52,7 @@ gorex pack ls [--json] | search [QUERY] [--json] | install [--name ID] [--json] 
 gorex send [-s SESSION] [--key KEY]... [--enter] [--agent NAME] [--json] [TEXT...]
 gorex paste [-s SESSION] [--agent NAME] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
-gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
+gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT | --takeover) [--timeout D]
 gorex run [--json] [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
@@ -143,15 +143,15 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 - `capture` prints the screen as text, or the escape sequences with
   `--raw`.
 - `wait --exit` exits with the program's status; the other conditions
-  exit 0, and a timeout exits 1. `--timeout 0` (the default) waits forever.
+  exit 0, and a timeout exits 1. `--timeout 0` (the default) waits forever. `--takeover` waits until human UI input takes over an agent-driven session ([DSK-016](DSK-016-agent-pane-highlight.md)).
 - `run` creates a session, runs the command, prints what the screen shows
   when it ends, and exits with the program's status.
 - `split` changes the layout; the command after `--` runs in the new
   pane, or a shell does. The session server makes the change, and an
   open window shows it at once, a closed one as it opens. `close` and
   `rename` work the same way.
-- `events` prints each layout or session change as one JSON line; with a
-  remote host, it subscribes to that host's layout too.
+- `events` prints each layout, session, or human takeover (`"event":"takeover"`) change as one JSON line; with a
+  remote host, it subscribes to that host's layout and takeover events too.
 - `clients` prints the principal, peer key, whether it is remote, through a
   kept connection, and how many seconds it has been attached.
 - `hosts` lists saved remote hosts, each by its name and the alias it was

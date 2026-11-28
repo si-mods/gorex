@@ -170,7 +170,7 @@ Usage:
   gorex update (Linux)
   gorex config path | config check [FILE] | config reload | config get agent-highlight [--json] | config set agent-highlight on|off
   gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
-  gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
+  gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT | --takeover) [--timeout D]
   gorex run [--json] [--dir DIR] -- COMMAND...
   gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
   gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
@@ -468,16 +468,27 @@ func layoutCmd(args []string, out, errOut io.Writer) (int, bool) {
 	return ExitOK, true
 }
 
+func callerParentSession(target string) string {
+	if serverTarget != "" {
+		return ""
+	}
+	p := strings.TrimSpace(os.Getenv("GOREX_SESSION"))
+	if p == "" || p == target {
+		return ""
+	}
+	return p
+}
+
 // splitRequest is the layout change split asks for: a new pane beside
 // target, running command when one is given.
 func splitRequest(target string, vertical bool, dir string, command []string) rex.LayoutCommand {
-	return splitRequestWithAgent(target, vertical, dir, rex.ActorCLI, command)
+	return splitRequestWithAgent(target, vertical, dir, rex.ActorCLI, "", command)
 }
 
-func splitRequestWithAgent(target string, vertical bool, dir, agent string, command []string) rex.LayoutCommand {
+func splitRequestWithAgent(target string, vertical bool, dir, agent, parentSession string, command []string) rex.LayoutCommand {
 	return rex.LayoutCommand{
 		Op: "pane.split", SID: target, Vertical: vertical, Dir: dir, Command: command,
-		CreatedBy: rex.ActorCLI, Agent: agent,
+		CreatedBy: rex.ActorCLI, Agent: agent, ParentSession: parentSession,
 	}
 }
 
@@ -505,7 +516,7 @@ func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
-	res, err := c.Command(splitRequestWithAgent(target, *down, *dir, *agent, fs.Args()))
+	res, err := c.Command(splitRequestWithAgent(target, *down, *dir, *agent, callerParentSession(""), fs.Args()))
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -620,13 +631,14 @@ func newCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 
 	res, err := c.Command(rex.LayoutCommand{
-		Op:        "tab.create",
-		Space:     proj.ID,
-		Dir:       resolvedDir,
-		Name:      *name,
-		Command:   fs.Args(),
-		CreatedBy: rex.ActorCLI,
-		Agent:     *agent,
+		Op:            "tab.create",
+		Space:         proj.ID,
+		Dir:           resolvedDir,
+		Name:          *name,
+		Command:       fs.Args(),
+		CreatedBy:     rex.ActorCLI,
+		Agent:         *agent,
+		ParentSession: callerParentSession(""),
 	})
 	if err != nil {
 		fmt.Fprintln(errOut, err)
@@ -730,20 +742,21 @@ func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
+	parent := callerParentSession(target)
 	if text != "" {
-		if err := c.InputWithAgent(target, []byte(text), *agent); err != nil {
+		if err := c.InputFromSession(target, []byte(text), *agent, parent); err != nil {
 			fmt.Fprintln(errOut, err)
 			return codeFor(err), true
 		}
 	}
 	for _, k := range keys {
-		if err := c.SendKey(target, k); err != nil {
+		if err := c.SendKeyFromSession(target, k, *agent, parent); err != nil {
 			fmt.Fprintln(errOut, err)
 			return codeFor(err), true
 		}
 	}
 	if *enter && len(keys) > 0 {
-		if err := c.InputWithAgent(target, []byte("\r"), *agent); err != nil {
+		if err := c.InputFromSession(target, []byte("\r"), *agent, parent); err != nil {
 			fmt.Fprintln(errOut, err)
 			return codeFor(err), true
 		}
@@ -777,7 +790,7 @@ func pasteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
-	if err := c.PasteWithAgent(target, text, *agent); err != nil {
+	if err := c.PasteFromSession(target, text, *agent, callerParentSession(target)); err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}

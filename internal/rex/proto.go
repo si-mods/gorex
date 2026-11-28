@@ -161,9 +161,14 @@ const CapabilityProgramIcon = "program.icon"
 // "delegate", "delegate.send", and "delegate.result" ops.
 const CapabilityDelegate = "delegate"
 
+// CapabilityAgentTakeover is what a server that emits "takeover" events on the
+// subscribe stream when human UI input clears an active agent mark says it does
+// (docs/DSK-016-agent-pane-highlight.md).
+const CapabilityAgentTakeover = "agent.takeover"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityDirMkdir, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts, CapabilityPush, CapabilityProgramIcon, CapabilityDelegate}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityDirMkdir, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts, CapabilityPush, CapabilityProgramIcon, CapabilityDelegate, CapabilityAgentTakeover}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -252,10 +257,12 @@ type Request struct {
 	// gets a paste this way (SessionInfo.ConPTY).
 	Paste string `json:"paste,omitempty"`
 	// Actor names who sent an "input" or "paste" request ("cli", "human",
-	// or "delegate"), and Agent names the short badge label for CLI input
+	// or "delegate"), Agent names the short badge label for CLI input, and
+	// ParentSession names the caller's $GOREX_SESSION
 	// (docs/DSK-016-agent-pane-highlight.md).
-	Actor string `json:"actor,omitempty"`
-	Agent string `json:"agent,omitempty"`
+	Actor         string `json:"actor,omitempty"`
+	Agent         string `json:"agent,omitempty"`
+	ParentSession string `json:"parentSession,omitempty"`
 	// Theme is the host terminal's default colors, of "theme.set".
 	Theme *Theme `json:"theme,omitempty"`
 	// Seen is the time of the latest status record "seeStatus" tells the
@@ -503,10 +510,12 @@ type LayoutCommand struct {
 	Color string `json:"color,omitempty"`
 	// Float makes the pane pane.split makes float over the tab's others.
 	Float bool `json:"float,omitempty"`
-	// CreatedBy and Agent record who created a pane or tab via CLI or
-	// delegation, and the badge label it shows (docs/DSK-016-agent-pane-highlight.md).
-	CreatedBy string `json:"createdBy,omitempty"`
-	Agent     string `json:"agent,omitempty"`
+	// CreatedBy, Agent, and ParentSession record who created a pane or tab
+	// via CLI or delegation, the badge label it shows, and the parent
+	// $GOREX_SESSION (docs/DSK-016-agent-pane-highlight.md).
+	CreatedBy     string `json:"createdBy,omitempty"`
+	Agent         string `json:"agent,omitempty"`
+	ParentSession string `json:"parentSession,omitempty"`
 	// Base is the revision (layout.Tab.Rev) of the tab a change is built
 	// on, of tab.set, tab.close and pane.close: the server refuses it with
 	// conflict once the tab is at another, as another client changed it
@@ -778,6 +787,21 @@ type Event struct {
 	// Prompt is the question a config action asks, or its end, on a
 	// "prompt" event.
 	Prompt *PromptEvent `json:"prompt,omitempty"`
+	// Takeover describes human UI input taking over an agent-driven
+	// session, on a "takeover" event (docs/DSK-016-agent-pane-highlight.md).
+	Takeover *TakeoverEvent `json:"takeover,omitempty"`
+}
+
+// TakeoverEvent is the payload of a "takeover" event on the subscribe stream
+// when human UI input flips a session's AgentActor.Active from true to false.
+type TakeoverEvent struct {
+	SID            string    `json:"sid"`
+	Agent          string    `json:"agent,omitempty"`
+	CreatedBy      string    `json:"createdBy"`
+	ParentSession  string    `json:"parentSession,omitempty"`
+	Via            string    `json:"via"`
+	LastCLIInputAt time.Time `json:"lastCliInputAt,omitzero"`
+	At             time.Time `json:"at"`
 }
 
 // PromptSpec is a question a config action asks: one line of text, or one
@@ -872,6 +896,8 @@ type AgentActor struct {
 	LastCLIInputAt time.Time `json:"lastCliInputAt,omitzero"`
 	Agent          string    `json:"agent,omitempty"`
 	Active         bool      `json:"active,omitempty"`
+	ParentSession  string    `json:"parentSession,omitempty"`
+	TookOverAt     time.Time `json:"tookOverAt,omitzero"`
 }
 
 // NormalizeAgentName trims and bounds an agent badge label so scripts cannot
@@ -906,12 +932,13 @@ type CreateOptions struct {
 	Env       []string `json:"env,omitempty"`
 	Cols      int      `json:"cols,omitempty"`
 	Rows      int      `json:"rows,omitempty"`
-	// CreatedBy ("human", "cli", or "delegate"), Agent, and StampInput
-	// record CLI or delegated actor ownership at creation
+	// CreatedBy ("human", "cli", or "delegate"), Agent, ParentSession, and
+	// StampInput record CLI or delegated actor ownership at creation
 	// (docs/DSK-016-agent-pane-highlight.md).
-	CreatedBy  string `json:"createdBy,omitempty"`
-	Agent      string `json:"agent,omitempty"`
-	StampInput bool   `json:"stampInput,omitempty"`
+	CreatedBy     string `json:"createdBy,omitempty"`
+	Agent         string `json:"agent,omitempty"`
+	ParentSession string `json:"parentSession,omitempty"`
+	StampInput    bool   `json:"stampInput,omitempty"`
 	// prelude is text the session's screen shows before the program's
 	// first output: a teleported pane's scrollback; id the session's id,
 	// a new one when "": a teleport's, its hop's.

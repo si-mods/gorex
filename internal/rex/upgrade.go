@@ -238,6 +238,8 @@ func (s *session) state() sessionState {
 			LastCLIInputAt: s.lastCLIInputAt,
 			Agent:          s.agentLabel,
 			Active:         s.agentActive,
+			ParentSession:  s.parentSession,
+			TookOverAt:     s.tookOverAt,
 		},
 	}
 	st.Screen, st.Title = s.view()
@@ -303,6 +305,7 @@ func Resume(path string) error {
 		}
 		id := ss.id
 		ss.typed = func() { s.used(id) }
+		ss.onTakeover = s.agentTookOver
 		s.sessions[ss.id] = ss
 		s.order = append(s.order, ss.id)
 		s.watchExit(ss)
@@ -330,6 +333,8 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		s.lastCLIInputAt = st.AgentActor.LastCLIInputAt
 		s.agentLabel = st.AgentActor.Agent
 		s.agentActive = st.AgentActor.Active
+		s.parentSession = st.AgentActor.ParentSession
+		s.tookOverAt = st.AgentActor.TookOverAt
 	}
 	if err := s.newVT(); err != nil {
 		return nil, err

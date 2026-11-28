@@ -98,7 +98,7 @@ func serverOp(op string) serverOpFunc {
 		})
 	case "paste":
 		return withSession(func(_ *Server, ss *session, req Request, _ string, _ *keptConn) (any, error) {
-			return nil, ss.pasteFromActor(req.Paste, req.Actor, req.Agent)
+			return nil, ss.pasteFromActor(req.Paste, req.Actor, req.Agent, req.ParentSession)
 		})
 	case "capture":
 		return withSession(doCapture)
@@ -353,14 +353,14 @@ func (s *Server) doShutdown(req Request, _ string, _ *keptConn) (any, error) {
 }
 
 func doInput(_ *Server, ss *session, req Request, _ string, _ *keptConn) (any, error) {
-	return nil, ss.inputFromActor(req.Bytes, req.Actor, req.Agent)
+	return nil, ss.inputFromActor(req.Bytes, req.Actor, req.Agent, req.ParentSession, "paste")
 }
 
 func doKey(_ *Server, ss *session, req Request, _ string, _ *keptConn) (any, error) {
 	if req.Key == nil {
 		return nil, ErrBadInput
 	}
-	return nil, ss.Key(*req.Key)
+	return nil, ss.keyFromActor(*req.Key, req.Actor, req.Agent, req.ParentSession)
 }
 
 func doMouse(_ *Server, ss *session, req Request, _ string, _ *keptConn) (any, error) {

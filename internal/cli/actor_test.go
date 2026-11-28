@@ -128,3 +128,69 @@ func TestCLIConfigAgentHighlight(t *testing.T) {
 		t.Fatalf("get on: code=%d out=%q err=%q", code, out, errOut)
 	}
 }
+
+func TestCLITakeoverEventsAndWait(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
+	c := startServer(t)
+
+	parentTab, err := c.Command(rex.LayoutCommand{Op: "tab.create"})
+	if err != nil || parentTab.Code != "" {
+		t.Fatalf("tab.create: %+v %v", parentTab, err)
+	}
+	parentSID := parentTab.New
+	t.Setenv("GOREX_SESSION", parentSID)
+
+	// Split a child pane from inside parentSID with --agent agy.
+	code, _, out, errOut := runMain(t, "split", "-s", parentSID, "--agent", "agy", "--", "/bin/sh", "-c", "sleep 5")
+	if code != ExitOK {
+		t.Fatalf("split: %d %s", code, errOut)
+	}
+	childSID := strings.TrimSpace(out)
+
+	// Verify wait --takeover times out cleanly when no human takes over.
+	code, _, _, _ = runMain(t, "wait", "-s", childSID, "--takeover", "--timeout", "100ms")
+	if code != ExitFailed {
+		t.Fatalf("wait --takeover timeout code = %d, want %d", code, ExitFailed)
+	}
+
+	// Start wait --takeover --json concurrently, then trigger human takeover.
+	type waitRes struct {
+		code int
+		out  string
+		err  string
+	}
+	done := make(chan waitRes, 1)
+	go func() {
+		cCode, _, cOut, cErr := runMain(t, "wait", "-s", childSID, "--takeover", "--timeout", "3s", "--json")
+		done <- waitRes{cCode, cOut, cErr}
+	}()
+	time.Sleep(80 * time.Millisecond)
+	if err := c.PasteHuman(childSID, "human input"); err != nil {
+		t.Fatal(err)
+	}
+	res := <-done
+	if res.code != ExitOK {
+		t.Fatalf("wait --takeover failed: code=%d err=%s out=%s", res.code, res.err, res.out)
+	}
+	var parsed struct {
+		Session  string            `json:"session"`
+		Takeover rex.TakeoverEvent `json:"takeover"`
+	}
+	if err := json.Unmarshal([]byte(res.out), &parsed); err != nil {
+		t.Fatalf("unmarshal wait --takeover: %v (%q)", err, res.out)
+	}
+	if parsed.Session != childSID || parsed.Takeover.SID != childSID || parsed.Takeover.Agent != "agy" || parsed.Takeover.ParentSession != parentSID || parsed.Takeover.Via != "paste" {
+		t.Fatalf("unexpected wait --takeover output: %+v", parsed)
+	}
+
+	// Late caller invoking wait --takeover after takeover already occurred returns immediately via TookOverAt.
+	code, _, out, errOut = runMain(t, "wait", "-s", childSID, "--takeover", "--timeout", "200ms", "--json")
+	if code != ExitOK {
+		t.Fatalf("late wait --takeover failed: %d %s", code, errOut)
+	}
+	if !strings.Contains(out, `"via": "prior"`) {
+		t.Fatalf("late wait --takeover output = %q, want via=prior", out)
+	}
+}

@@ -942,6 +942,7 @@ func (s *Server) createHeld(o CreateOptions, peer string) (*session, error) {
 	}
 	ss.owner = peer
 	ss.typed = func() { s.used(id) }
+	ss.onTakeover = s.agentTookOver
 	s.mu.Lock()
 	s.sessions[id] = ss
 	s.order = append(s.order, id)

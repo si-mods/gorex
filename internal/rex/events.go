@@ -20,6 +20,7 @@ type subscriber struct {
 	pending       map[string]bool
 	wantTransfers bool
 	transfers     []Transfer
+	takeovers     []TakeoverEvent
 	wake          chan struct{}
 	done          chan struct{}
 	// write sends a line on the connection, as the subscriber's events
@@ -50,8 +51,8 @@ func (s *Server) subscribe(write func([]byte), remote bool, transfers bool) *sub
 				return
 			}
 			s.subMu.Lock()
-			pending, transfers := sub.pending, sub.transfers
-			sub.pending, sub.transfers = map[string]bool{}, nil
+			pending, transfers, takeovers := sub.pending, sub.transfers, sub.takeovers
+			sub.pending, sub.transfers, sub.takeovers = map[string]bool{}, nil, nil
 			s.subMu.Unlock()
 			// The sessions first: a new tab's layout names a new session.
 			for _, kind := range []string{"sessions", "layout", "theme", "ports"} {
@@ -81,6 +82,10 @@ func (s *Server) subscribe(write func([]byte), remote bool, transfers bool) *sub
 					ev.Sessions = s.eventSessions()
 				}
 				b, _ := json.Marshal(ev)
+				write(b)
+			}
+			for _, tk := range takeovers {
+				b, _ := json.Marshal(Event{Kind: "takeover", Takeover: &tk})
 				write(b)
 			}
 			// An ended session's transfer is told its last state too. The
@@ -121,6 +126,24 @@ func (s *Server) notify(kind string) {
 }
 
 func (s *Server) sessionsChanged() { s.notify("sessions") }
+
+// agentTookOver queues an edge-triggered human takeover event for every
+// subscriber without blocking the session's PTY or control caller.
+func (s *Server) agentTookOver(ev TakeoverEvent) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	for sub := range s.subs {
+		if i := slices.IndexFunc(sub.takeovers, func(o TakeoverEvent) bool { return o.SID == ev.SID }); i >= 0 {
+			sub.takeovers[i] = ev
+		} else {
+			sub.takeovers = append(sub.takeovers, ev)
+		}
+		select {
+		case sub.wake <- struct{}{}:
+		default:
+		}
+	}
+}
 
 // transferred tells the subscribers that asked of t, a transfer's state
 // now: one not told of its last state yet gets this one

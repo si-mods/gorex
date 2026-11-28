@@ -43,13 +43,14 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	idle := fs.Bool("idle", false, "wait for the shell's prompt")
 	status := fs.String("status", "", "wait for a program status, as blocked")
 	contains := fs.String("contains", "", "wait for the screen to contain text")
+	takeover := fs.Bool("takeover", false, "wait for human UI input to take over the session")
 	timeout := fs.Duration("timeout", 0, "how long to wait; 0 waits forever")
 	asJSON := fs.Bool("json", false, "print JSON when ready")
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
-	if !*waitExit && !*idle && *status == "" && *contains == "" {
-		fmt.Fprintln(errOut, "gorex wait: give --exit, --idle, --status or --contains")
+	if !*waitExit && !*idle && *status == "" && *contains == "" && !*takeover {
+		fmt.Fprintln(errOut, "gorex wait: give --exit, --idle, --status, --contains or --takeover")
 		return ExitUsage, true
 	}
 	c, code := connect(errOut)
@@ -61,6 +62,9 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
+	}
+	if *takeover && !*waitExit && !*idle && *status == "" && *contains == "" {
+		return waitTakeoverCmd(c, target, *timeout, *asJSON, out, errOut)
 	}
 	var deadline time.Time
 	if *timeout > 0 {
@@ -102,6 +106,9 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 				ready = false
 			}
 		}
+		if *takeover && (in.AgentActor.Active || in.AgentActor.TookOverAt.IsZero()) {
+			ready = false
+		}
 		if ready {
 			if *asJSON {
 				WriteJSON(out, map[string]any{"session": target, "exitCode": in.ExitCode})
@@ -120,6 +127,88 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitFailed, true
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func waitTakeoverCmd(c *rex.Client, target string, timeout time.Duration, asJSON bool, out, errOut io.Writer) (int, bool) {
+	if h, err := c.Hello(); err == nil && len(h.Capabilities) > 0 && !h.Can(rex.CapabilityAgentTakeover) {
+		msg := "the server does not support takeover events"
+		if asJSON {
+			WriteJSON(out, map[string]any{"session": target, "error": msg})
+		}
+		fmt.Fprintln(errOut, "gorex wait:", msg)
+		return ExitFailed, true
+	}
+	if err := c.Subscribe(); err != nil {
+		fmt.Fprintln(errOut, err)
+		return ExitServer, true
+	}
+	infos, err := c.List()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return ExitServer, true
+	}
+	in, ok := findSession(infos, target)
+	if !ok {
+		fmt.Fprintf(errOut, "gorex: no session %q\n", target)
+		return ExitTarget, true
+	}
+	if !in.AgentActor.Active && !in.AgentActor.TookOverAt.IsZero() {
+		if asJSON {
+			WriteJSON(out, map[string]any{
+				"session": target,
+				"takeover": rex.TakeoverEvent{
+					SID:            target,
+					Agent:          in.AgentActor.Agent,
+					CreatedBy:      in.AgentActor.CreatedBy,
+					ParentSession:  in.AgentActor.ParentSession,
+					Via:            "prior",
+					LastCLIInputAt: in.AgentActor.LastCLIInputAt,
+					At:             in.AgentActor.TookOverAt,
+				},
+			})
+		}
+		return ExitOK, true
+	}
+	var timerCh <-chan time.Time
+	if timeout > 0 {
+		tm := time.NewTimer(timeout)
+		defer tm.Stop()
+		timerCh = tm.C
+	}
+	for {
+		select {
+		case ev, open := <-c.Events():
+			if !open {
+				return ExitServer, true
+			}
+			if ev.Kind == "takeover" && ev.Takeover != nil && ev.Takeover.SID == target {
+				if asJSON {
+					WriteJSON(out, map[string]any{"session": target, "takeover": ev.Takeover})
+				}
+				return ExitOK, true
+			}
+			if ev.Kind == "sessions" {
+				found := false
+				for _, es := range ev.Sessions {
+					if es.ID == target {
+						found = true
+						break
+					}
+				}
+				if !found {
+					fmt.Fprintf(errOut, "gorex: no session %q\n", target)
+					return ExitTarget, true
+				}
+			}
+		case <-timerCh:
+			msg := fmt.Sprintf("%s was not taken over in %v", target, timeout)
+			if asJSON {
+				WriteJSON(out, map[string]any{"session": target, "error": msg})
+			}
+			fmt.Fprintln(errOut, "gorex wait:", msg)
+			return ExitFailed, true
+		}
 	}
 }
 
