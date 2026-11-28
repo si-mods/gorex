@@ -926,14 +926,21 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         }
     }
 
+    private func cancelTrackedControls(in root: UIView) {
+        if let c = root as? UIControl { c.cancelTracking(with: nil) }
+        for sub in root.subviews { cancelTrackedControls(in: sub) }
+    }
+
     @objc private func swipedLeft(_ g: UISwipeGestureRecognizer) {
         guard g.state == .ended, !quickKeysExpanded else { return }
+        for v in [attach, micHolder, send] { cancelTrackedControls(in: v) }
         tick.impactOccurred()
         setQuickKeysExpanded(true, animated: true)
     }
 
     @objc private func swipedRight(_ g: UISwipeGestureRecognizer) {
         guard g.state == .ended, quickKeysExpanded else { return }
+        cancelTrackedControls(in: quickPill)
         tick.impactOccurred()
         setQuickKeysExpanded(false, animated: true)
         focus()
@@ -947,11 +954,14 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             if dismissPan.state == .began || dismissPan.state == .changed { return false }
             if let stickDrag, stickDrag.state == .began || stickDrag.state == .changed { return false }
             let p = g.location(in: self)
+            if !strip.isHidden, strip.frame.contains(convert(p, to: strip.superview)) {
+                return false
+            }
             if quickKeysExpanded, !quickPill.isHidden, stickBtn.frame.contains(convert(p, to: stickBtn.superview)) {
                 return false
             }
             let inField = fieldClip.alpha > 0 && fieldClip.frame.contains(convert(p, to: rowBox))
-            if inField, multiLine, field.isFirstResponder, field.selectedRange.length > 0 {
+            if inField, field.isFirstResponder, field.selectedRange.length > 0 {
                 return false
             }
             return true
@@ -998,7 +1008,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             return true
         }
         if g === swipeLeft || g === swipeRight,
-           !(multiLine && field.isFirstResponder && field.selectedRange.length > 0),
+           !(field.isFirstResponder && field.selectedRange.length > 0),
            other.view?.isDescendant(of: field) == true {
             return true
         }
