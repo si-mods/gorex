@@ -3,12 +3,14 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"gorex/internal/rex"
 )
@@ -182,14 +184,24 @@ func TestCLITakeoverEventsAndWait(t *testing.T) {
 		}
 		close(lines)
 	}()
-	for {
-		if _, err := c.Command(rex.LayoutCommand{Op: "pane.rename", SID: childSID, Name: "worker"}); err != nil {
+	subscribed := false
+	for i := range 200 {
+		if _, err := c.Command(rex.LayoutCommand{Op: "pane.rename", SID: childSID, Name: fmt.Sprintf("worker-%d", i)}); err != nil {
 			t.Fatal(err)
 		}
-		line := <-lines
-		if strings.Contains(line, `"event":"layout"`) {
+		select {
+		case line := <-lines:
+			if strings.Contains(line, `"event":"layout"`) {
+				subscribed = true
+			}
+		case <-time.After(20 * time.Millisecond):
+		}
+		if subscribed {
 			break
 		}
+	}
+	if !subscribed {
+		t.Fatal("timed out waiting for gorex events subscription")
 	}
 
 	// Start wait --takeover --json concurrently and trigger human takeover.
