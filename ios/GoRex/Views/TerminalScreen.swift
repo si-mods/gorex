@@ -401,15 +401,7 @@ struct TerminalScreen: View {
     private var voiceCapsule: VoiceCapsule {
         VoiceCapsule(said: said, busy: $busy, cancel: { terminal?.stopDictating() }, finish: {
             finishDictation()
-        }, send: composerMode ? {
-            guard !busy else { return }
-            busy = true
-            Task {
-                await terminal?.typeDictation()
-                busy = false
-                terminal?.composerSend?()
-            }
-        } : nil)
+        }, composer: composerMode)
     }
 
     /// Starts voice dictation for ComposerBar's press-and-hold gesture,
@@ -1410,9 +1402,9 @@ private struct WideWave: View {
 }
 
 /// What is said while the mic is on: in the key bar, a compact single-row
-/// capsule; in Composer Mode (`send != nil`), a two-row Grok-style card with
-/// the full-width live transcript on top and Stop, wide waveform, and one-tap
-/// Send below.
+/// capsule; in Composer Mode (`composer`), a two-row Grok-style card with
+/// the full-width live transcript on top and Cancel, wide waveform, and Done
+/// below. Dictation never sends: Done lands the text in the field.
 ///
 /// In the key bar it is given again only as what is said, or busy, changes
 /// (DictationShown): an input it shows besides those goes in there too.
@@ -1421,7 +1413,7 @@ private struct VoiceCapsule: View {
     @Binding var busy: Bool
     let cancel: () -> Void
     let finish: () -> Void
-    var send: (() -> Void)? = nil
+    var composer = false
 
     var body: some View {
         let settled = (said?.polishing == true ? "" : said?.settled) ?? ""
@@ -1431,7 +1423,7 @@ private struct VoiceCapsule: View {
             a.foregroundColor = .secondary
             return a
         }()
-        if let send {
+        if composer {
             let transcript: Text = if said?.polishing == true {
                 Text("Polishing…").foregroundStyle(.secondary)
             } else if full.isEmpty {
@@ -1475,24 +1467,24 @@ private struct VoiceCapsule: View {
                 HStack(spacing: 12) {
                     Button {
                         Haptics.tapped()
-                        finish()
+                        cancel()
                     } label: {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.primary)
-                            .frame(width: 12, height: 12)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.primary)
                             .frame(width: 36, height: 36)
                             .background(Color(uiColor: .secondarySystemFill), in: Circle())
                             .contentShape(.circle)
                     }
                     .buttonStyle(.plain)
                     .disabled(busy)
-                    .accessibilityLabel("Stop Dictation")
+                    .accessibilityLabel("Cancel")
 
                     WideWave()
 
                     Button {
                         Haptics.tapped()
-                        send()
+                        finish()
                     } label: {
                         Group {
                             if busy {
@@ -1500,10 +1492,10 @@ private struct VoiceCapsule: View {
                                     .tint(Color(uiColor: .systemBackground))
                                     .accessibilityLabel("Recognising")
                             } else {
-                                Image(systemName: "arrow.up")
+                                Image(systemName: "checkmark")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(Color(uiColor: .systemBackground))
-                                    .accessibilityLabel("Send")
+                                    .accessibilityLabel("Done")
                             }
                         }
                         .frame(width: 36, height: 36)

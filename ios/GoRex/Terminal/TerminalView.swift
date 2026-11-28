@@ -209,9 +209,6 @@ final class TerminalView: UIView, TerminalOutput {
     /// Where a finished dictation lands instead of the terminal: Composer
     /// Mode's pinned bar fills its field with it (Composer.swift).
     var dictationInsert: ((String) -> Void)?
-    /// Submits the pinned compose bar immediately after dictation finishes
-    /// when the user taps Send from the inline voice view.
-    var composerSend: (() -> Void)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -1342,7 +1339,6 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             let oldComposer = composer
             let wasTyping = oldComposer?.field.isFirstResponder == true
             terminal.dictationInsert = nil
-            terminal.composerSend = nil
             terminal.composerCover = 0
             // Clear `composer` before transferring focus so
             // `terminal.canBecomeFirstResponder` is true and UIKit hands off
