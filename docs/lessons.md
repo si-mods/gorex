@@ -293,6 +293,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the new tests also pass `go test -race -count 20 -cpu 1,4,8` on Linux or macOS before the PR opens.
 - **Source:** #684 passed `-race -count 5` on Windows, then Linux CI found a race in the WebTransport restart and the Mac mini found one on the `tracing` variable.
 
+### A field set under a lock, read after the unlock
+- **Trigger:** code takes values out of a locked map, unlocks, then reads their fields; or a flaky test's `-race` report names a field that a goroutine writes under a lock.
+- **Check:** the fields a goroutine still writes are read under the same lock, and only the values read are used after the unlock. A `-race` failure is a production bug until its two stacks say otherwise.
+- **Source:** #1124's `SetSSHHosts` read a dropped `pooledSSH.c` after `sshMu.Unlock` while its connect still wrote it; #1159's `TestSSHPendingOutlivesRecord` held such a connect open and failed under `-race` (#1257).
+
 ### Lint before the PR
 - **Trigger:** any Go change.
 - **Check:** the author ran `golangci-lint` at the version `ci.yml` pins, for `GOOS` linux, windows and darwin, and `gofmt -l` on the changed files. `go vet` alone is not the lint job.
