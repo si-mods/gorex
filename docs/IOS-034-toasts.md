@@ -21,7 +21,7 @@ This doc adds one toast to Rex Go. The toast replaces the alerts that have only 
 ## Goal
 
 - One toast shows at a time. It shows over every screen of the app, including the terminal.
-- A failure shows as an error toast with the title and the reason in one line.
+- A failure shows as an error toast with the title and the reason, on up to three lines.
 - An upload shows Uploading, then Uploaded. A failed upload shows the error with Retry.
 - Settings shows if notifications are on, and gives the way to turn them on.
 
@@ -40,10 +40,10 @@ This doc adds one toast to Rex Go. The toast replaces the alerts that have only 
 
 | Kind | Content | Stays |
 | --- | --- | --- |
-| Status | An SF Symbol and one line. The error variant has `exclamationmark.circle.fill` in the system red. | 4 s. 1 s more for each 20 characters past 40. 8 s at most. |
-| Progress | A spinner and one line. It becomes its result in the same place. The result can have a button, such as Retry. | While the work runs. Then 3 s for a success. An error with a button stays until the user uses it or closes it. |
+| Status | An SF Symbol and up to three lines. The error variant has `exclamationmark.circle.fill` in the system red. | 4 s. 1 s more for each 20 characters past 40. 8 s at most. |
+| Progress | A spinner and up to three lines. It becomes its result in the same place. The result can have a button, such as Retry. | While the work runs. Then 3 s for a success. An error with a button stays until the user uses it or closes it. |
 
-- A line has one row. A longer line ends in an ellipsis. VoiceOver reads the full line.
+- The text wraps to three rows at most; past that it ends in an ellipsis. One row is a capsule; more rows keep the same corner radius (20 pt), so the toast grows into a rounded rectangle. VoiceOver reads the full text. One row cut off the reason that mattered ("Can't Upload: The operation c…").
 - A swipe toward its edge dismisses the toast: up at the top, down in a terminal. The toast follows the finger.
 - Only one place shows the toast: the latest screen that has one. A sheet shows it over a terminal, the terminal over the list.
 - A new toast replaces the old one. The old toast ends first.
@@ -51,7 +51,7 @@ This doc adds one toast to Rex Go. The toast replaces the alerts that have only 
 - VoiceOver gets one announcement for each text the toast shows. The toast never takes the focus. A progress that turns into its result announces the result.
 - A progress that the user closed, or a new toast replaced, shows its result only when the result is an error. The user must hear of a failure.
 
-**Failures (I4).** The alerts with only OK become error toasts. The text is the title, a colon and the first line of the reason. The reason is cut at 120 characters. The cases are in `HostSection.swift` (the new session and tab, the changes of a tab, a project, a session and the quick launchers), `TerminalScreen.swift` (split, close, new tab, Folder Not Found with only OK) and `HostListView.swift` (make and move a project).
+**Failures (I4).** The alerts with only OK become error toasts. The text is the title, a colon and the first line of the reason. The reason is cut at 120 characters. A server error of code `not_found` or `session_not_found` names the ids it looked for ("no block block:… in session:…"), which tell the user nothing; its reason reads "It has closed on the computer." instead (`Toast.reason`). Other errors keep their message. The cases are in `HostSection.swift` (the new session and tab, the changes of a tab, a project, a session and the quick launchers), `TerminalScreen.swift` (split, close, new tab, Folder Not Found with only OK) and `HostListView.swift` (make and move a project).
 
 **Uploads (I5).** The toast shows "Uploading <name>", or "Uploading <n> files" for more than one file. It becomes "Uploaded" for 3 s. The toast does not name a folder. The server answers a stream upload (`upload_begin` and the `rex.data.bytes.v1` stream) with no path. It types the path into the terminal and closes the stream. Only the HTTP upload of `/api/upload` answers a path, and the app does not use it. A failure turns the toast into "Can't Upload: <reason>" with Retry. Retry sends only the files that are staged and not yet sent. The server types each file's path as the file arrives, so a file sent twice is typed twice. The staged files go when the toast ends with no Retry. A failure while the files stage has no Retry: the folder goes, and the user picks again. The spinner on the key bar stays.
 
