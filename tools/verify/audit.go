@@ -25,9 +25,10 @@ import (
 const deadcodeTool = "golang.org/x/tools/cmd/deadcode@v0.53.0"
 
 // deadcodeBlind are packages whose callers deadcode cannot see: gomobile
-// binds ios/** for Swift, and web/tailnet runs as wasm behind the web
-// client's JavaScript. A function there with no Go caller is not dead.
-var deadcodeBlind = []string{"ios/", "web/tailnet/"}
+// binds ios/** for Swift, and web/{tailnet,tailcat,jsbridge,wsclient} run
+// behind the web client's wasm engines (GOOS=js GOARCH=wasm). A function
+// there with no native Go caller is not dead.
+var deadcodeBlind = []string{"ios/", "web/tailnet/", "web/tailcat/", "web/jsbridge/", "web/wsclient/"}
 
 // deadcodeFinding reads one `path:line:col: unreachable func: name` line.
 var deadcodeFinding = regexp.MustCompile(`^(.+?):(\d+):(\d+): unreachable func: (.+)$`)

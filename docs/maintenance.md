@@ -13,9 +13,10 @@ go run ./tools/verify -audit
 
 It runs `deadcode` for linux, windows and darwin together, and reports only
 what no target can reach in any of them. A function unused on one system is
-not reported while another reaches it. `ios/**` and `web/tailnet/**` are
-not reported: gomobile and the wasm build call them from Swift and
-JavaScript, which the Go analysis cannot see.
+not reported while another reaches it. `ios/**` and
+`web/{tailnet,tailcat,jsbridge,wsclient}/**` are not reported: gomobile and
+the wasm engines call them from Swift and JavaScript, which the Go analysis
+cannot see.
 
 Delete the function with its tests and the comment that names it, in the
 same pull request. Dead code left behind a feature is not "for later": it

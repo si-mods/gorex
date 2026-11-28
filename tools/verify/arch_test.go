@@ -39,6 +39,18 @@ func TestArchBoundariesViolations(t *testing.T) {
 	write("ios/tailnet/bad.go", "package tailnet\nimport _ \"gorex/internal/rex\"\n")
 	// Non-test importing testrex -> forbidden
 	write("internal/cli/bad.go", "package cli\nimport _ \"gorex/internal/testrex\"\n")
+	// Web jsbridge importing web/tailnet -> forbidden
+	write("web/jsbridge/bad.go", "package jsbridge\nimport _ \"gorex/web/tailnet\"\n")
+	// Web wsclient leaf importing web/jsbridge -> forbidden
+	write("web/wsclient/bad.go", "package wsclient\nimport _ \"gorex/web/jsbridge\"\n")
+	// Locales leaf importing internal/config -> forbidden
+	write("locales/bad.go", "package locales\nimport _ \"gorex/internal/config\"\n")
+	// Tools verify importing internal/rex -> forbidden
+	write("tools/verify/bad.go", "package main\nimport _ \"gorex/internal/rex\"\n")
+	// Unclassified package -> forbidden even with zero gorex imports
+	write("internal/unclassified/bad.go", "package unclassified\n")
+	// Allowed: web/jsbridge importing web/wsclient
+	write("web/jsbridge/ok.go", "package jsbridge\nimport _ \"gorex/web/wsclient\"\n")
 	// Test file importing testrex -> allowed
 	write("internal/cli/ok_test.go", "package cli\nimport _ \"gorex/internal/testrex\"\n")
 
@@ -53,12 +65,19 @@ func TestArchBoundariesViolations(t *testing.T) {
 		"internal/rex/bad.go",
 		"ios/tailnet/bad.go",
 		"internal/cli/bad.go",
+		"web/jsbridge/bad.go",
+		"web/wsclient/bad.go",
+		"locales/bad.go",
+		"tools/verify/bad.go",
+		"internal/unclassified/bad.go",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing expected violation %q in:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "ok_test.go") {
-		t.Errorf("test file should not trigger violation:\n%s", out)
+	for _, okFile := range []string{"ok.go", "ok_test.go"} {
+		if strings.Contains(out, okFile) {
+			t.Errorf("allowed file %q should not trigger violation:\n%s", okFile, out)
+		}
 	}
 }

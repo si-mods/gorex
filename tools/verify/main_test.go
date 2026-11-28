@@ -56,6 +56,8 @@ func TestPlan(t *testing.T) {
 			append(append([]string{}, goChecks...), "golangci-lint", "go test")},
 		{"rexproto json", []string{"internal/rexproto/protocol.json"}, win,
 			append(append([]string{}, goChecks...), "golangci-lint", "go test")},
+		{"locales json", []string{"locales/en.json"}, win,
+			append(append([]string{}, goChecks...), "golangci-lint", "go test")},
 		{"web", []string{"web/src/a.ts"}, win, []string{"web typecheck", "web test"}},
 		{"web no node_modules", []string{"web/src/a.ts"}, facts{goos: "windows"},
 			[]string{"web typecheck (skip)", "web test (skip)"}},
