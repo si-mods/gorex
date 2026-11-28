@@ -38,6 +38,12 @@ type hostPairQR struct {
 	directAddress string
 	directImage   ui.ImageSource
 	directIsLAN   bool
+	// pairedDevice is the name of the device just approved from this
+	// dialog, so it can show a brief "Paired" confirmation step.
+	pairedDevice string
+	// showQR lets the user return to the QR code even while a request
+	// is pending (e.g. to scan a second device).
+	showQR bool
 	// tab is the code the dialog shows when a second choice is offered:
 	// for Rex Go QR, 0 is the relay address (off-LAN) and 1 is same-network
 	// only; for a local listener with a web link, 0 is the address's own
@@ -236,7 +242,7 @@ func pairQRCode(c *ui.Context, img ui.ImageSource, label string) {
 	k := colorsOf(c)
 	ui.Row(c).Justify(ui.Center).Margin(2, 0, 2, 0).Children(func() {
 		ui.Column(c).Padding(10).Radius(k.radius(radiusL)).Background(ui.RGB(255, 255, 255)).Children(func() {
-			ui.Image(c, img).Size(240, 240).Label(label)
+			ui.Image(c, img).Size(208, 208).Label(label)
 		})
 	})
 }
@@ -255,7 +261,17 @@ func (a *App) hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		// The backdrop dims the window; the glass is the panel's, as in
 		// the other sheets over the app.
 		backdrop.Background(k.backdrop)
-		dialogPanel(panel, k, 380).Gap(12).Role(ui.RoleDialog).Label(title)
+		dialogPanel(panel, k, 360).Gap(14).Role(ui.RoleDialog).Label(title)
+		// Rex Go pairing uses a calm 3-step flow:
+		// 1. Scan QR -> 2. Confirm fingerprint & Approve -> 3. Paired.
+		if page.rexGo && len(remoteUI.st.Pending) > 0 && !page.showQR {
+			a.rexGoApproveStep(c, k, page)
+			return
+		}
+		if page.rexGo && page.pairedDevice != "" && len(remoteUI.st.Pending) == 0 && !page.showQR {
+			rexGoPairedStep(c, k, page)
+			return
+		}
 		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 		// A listener with a web link offers both codes: this address's,
 		// for Rex, and the page's, for a browser on the same network.
@@ -318,10 +334,8 @@ func (a *App) hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 				hint = locales.HostsLocalLanRexQRHint()
 			case sameNetSelected:
 				transport = locales.RemoteQRTransportDirect()
-				hint = locales.RemoteDirectQRHint()
 			case page.rexGo:
 				transport = locales.RemoteQRTransportRelay()
-				hint = locales.RemoteRexGoQRHint()
 			case page.local && !page.tailnet:
 				transport = locales.RemoteQRTransportLAN()
 				hint = locales.HostsLocalLanRexQRHint()
@@ -329,43 +343,28 @@ func (a *App) hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 				transport = locales.RemoteQRTransportTailnet()
 				hint = locales.HostsLocalRexQRHint()
 			}
-			ui.Text(c, transport).FontSize(fontSubhead).FontWeight(600).TextColor(k.text).LineHeight(1.3)
-			ui.Text(c, hint).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
-			if page.rexGo && remoteUI.st.Pairing.Open && !sameNetSelected || (page.rexGo && remoteUI.st.Pairing.Open && !page.directIsLAN) {
-				statusLine(c, k, k.attention, locales.RemotePairWaiting(pairingLeft(remoteUI.st.Pairing.ExpiresAt, c.Now())))
-				c.After(time.Second)
-			}
-			if page.rexGo && len(remoteUI.st.Pending) > 0 {
-				ui.Column(c.Key("qr-pending")).Gap(8).Children(func() {
-					for _, p := range remoteUI.st.Pending {
-						ui.Row(c.Key("qr-pending:"+p.PublicKey)).Gap(8).Padding(10, 12).Radius(k.radius(radiusM)).
-							Background(k.panel).Border(1, k.panelBorder).AlignItems(ui.Center).Children(func() {
-							ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-								ui.Text(c, p.Name).FontSize(fontBody).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
-								ui.Text(c, rex.Fingerprint(p.PublicKey)).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.textMuted).SingleLine()
-							})
-							if ui.Button(c.Key("qr-reject"), locales.RemoteReject()).Disabled(remoteUI.busy).Clicked() {
-								a.remoteDo(func(srv *rex.Client) error { return srv.RejectPairing(p.PublicKey) }, nil)
-							}
-							if ui.PrimaryButton(c.Key("qr-approve"), locales.RemoteApprove()).Disabled(remoteUI.busy).Clicked() {
-								a.remoteDo(func(srv *rex.Client) error { return srv.ApprovePairing(p.PublicKey) }, nil)
-							}
-						})
-					}
-				})
-			}
-			pairQRCode(c, activeImage, title)
-			if page.rexGo && !(sameNetSelected && page.directIsLAN) {
-				if activeAddr != "" {
-					// The web client takes the same link the code encodes,
-					// pasted into its Add host (docs/WEB-006-tailcat.md).
-					ui.Text(c, activeAddr).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.text).Label(activeAddr)
+			if page.rexGo {
+				// Step 1 (Scan): minimal, calm — transport line, QR code, and
+				// live window countdown. The raw rexgo:// link stays behind
+				// Copy link so it does not clutter the sheet.
+				ui.Text(c, transport).FontSize(fontFootnote).TextColor(k.textMuted).LineHeight(1.3)
+				pairQRCode(c, activeImage, title)
+				if remoteUI.st.Pairing.Open && (!sameNetSelected || !page.directIsLAN) {
+					ui.Row(c).Justify(ui.Center).Children(func() {
+						statusLine(c, k, k.attention, locales.RemotePairWaiting(pairingLeft(remoteUI.st.Pairing.ExpiresAt, c.Now())))
+					})
+					c.After(time.Second)
 				}
-			} else if activeAddr != "" {
-				// The pairing token stays in the code and the copy, off
-				// the screen.
-				shown, _, _ := strings.Cut(activeAddr, "#")
-				ui.Text(c, shown).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.text).SingleLine().Label(shown)
+			} else {
+				ui.Text(c, transport).FontSize(fontSubhead).FontWeight(600).TextColor(k.text).LineHeight(1.3)
+				ui.Text(c, hint).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
+				pairQRCode(c, activeImage, title)
+				if activeAddr != "" {
+					// The pairing token stays in the code and the copy, off
+					// the screen.
+					shown, _, _ := strings.Cut(activeAddr, "#")
+					ui.Text(c, shown).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.text).SingleLine().Label(shown)
+				}
 			}
 		case page.rexGo:
 			ui.Text(c, locales.RemoteRexGoQRUnavailable()).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
@@ -375,10 +374,13 @@ func (a *App) hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		if page.copyFailed {
 			ui.Text(c, locales.HostsRexQRCopyFailed()).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 		}
-		ui.Row(c).Gap(8).Justify(ui.End).Margin(8, 0, 0, 0).Children(func() {
-			if ui.Button(c.Key("close"), locales.HostsRexQRClose()).Clicked() {
-				page.open = false
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Margin(4, 0, 0, 0).Children(func() {
+			if page.rexGo && page.showQR && len(remoteUI.st.Pending) > 0 {
+				if ui.PrimaryButton(c.Key("back-approve"), locales.RemoteApprove()).Clicked() {
+					page.showQR = false
+				}
 			}
+			ui.Spacer(c)
 			// The web tab's code holds the token too: a copy of the other
 			// address's link would be a different code than the one shown.
 			if activeImage != nil && activeAddr != "" && !(web && page.tab == 1) {
@@ -391,9 +393,73 @@ func (a *App) hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 					page.copied, page.copyFailed = err == nil, err != nil
 				}
 			}
+			if ui.Button(c.Key("close"), locales.HostsRexQRClose()).Clicked() {
+				page.open = false
+			}
 		})
 	})
 	if !page.open {
 		remoteUI.pairQR = nil
 	}
+}
+
+// rexGoApproveStep is step 2 of the Rex Go QR sheet: once a device scans
+// the code, the QR steps aside for a focused fingerprint verification and
+// Approve / Reject view.
+func (a *App) rexGoApproveStep(c *ui.Context, k *colors, page *hostPairQR) {
+	p := remoteUI.st.Pending[0]
+	fp := rex.Fingerprint(p.PublicKey)
+	ui.Column(c).AlignItems(ui.Center).Gap(8).Margin(4, 0, 0, 0).Children(func() {
+		ui.Box(c).Size(40, 40).Radius(k.radius(radiusM)).Background(k.accent).Center().Children(func() {
+			glyphIcon(c, "laptop", 20, k.accentText)
+		})
+		ui.Text(c, locales.RemoteQRApproveTitle(p.Name)).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
+		ui.Text(c, locales.RemoteQRApproveHint()).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
+	})
+	ui.Row(c).Justify(ui.Center).Padding(14, 20).Radius(k.radius(radiusM)).Background(k.panel).Border(1, k.panelBorder).Children(func() {
+		ui.Text(c, fp).Font(monoFamily()).FontSize(fontCodeSmall).FontWeight(700).TextColor(k.text).Label(fp)
+	})
+	if remoteUI.st.Pairing.Open {
+		ui.Row(c).Justify(ui.Center).Children(func() {
+			statusLine(c, k, k.attention, locales.RemotePairWaiting(pairingLeft(remoteUI.st.Pairing.ExpiresAt, c.Now())))
+		})
+		c.After(time.Second)
+	}
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Margin(4, 0, 0, 0).Children(func() {
+		if ui.Button(c.Key("qr-show"), locales.RemoteQRShowCode()).Clicked() {
+			page.showQR = true
+		}
+		ui.Spacer(c)
+		if ui.Button(c.Key("qr-reject"), locales.RemoteReject()).Disabled(remoteUI.busy).Clicked() {
+			a.remoteDo(func(srv *rex.Client) error { return srv.RejectPairing(p.PublicKey) }, nil)
+		}
+		if ui.PrimaryButton(c.Key("qr-approve"), locales.RemoteApprove()).Disabled(remoteUI.busy).Clicked() {
+			name, pub := p.Name, p.PublicKey
+			a.remoteDo(func(srv *rex.Client) error { return srv.ApprovePairing(pub) }, func() {
+				page.pairedDevice = name
+			})
+		}
+	})
+}
+
+// rexGoPairedStep is step 3 of the Rex Go QR sheet: a brief confirmation
+// once the device is approved, with Done or Pair another.
+func rexGoPairedStep(c *ui.Context, k *colors, page *hostPairQR) {
+	ui.Column(c).AlignItems(ui.Center).Gap(8).Margin(8, 0, 8, 0).Children(func() {
+		ui.Box(c).Size(40, 40).Radius(k.radius(radiusM)).Background(k.busy).Center().Children(func() {
+			glyphIcon(c, "check", 20, k.accentText)
+		})
+		ui.Text(c, locales.RemoteQRPairedTitle(page.pairedDevice)).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
+		ui.Text(c, locales.RemoteQRPairedHint(page.host)).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
+	})
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Margin(4, 0, 0, 0).Children(func() {
+		if ui.Button(c.Key("qr-another"), locales.RemoteQRPairAnother()).Clicked() {
+			page.pairedDevice = ""
+			page.showQR = false
+		}
+		ui.Spacer(c)
+		if ui.PrimaryButton(c.Key("qr-done"), locales.RemoteQRDone()).Clicked() {
+			page.open = false
+		}
+	})
 }

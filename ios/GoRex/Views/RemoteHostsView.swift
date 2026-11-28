@@ -592,9 +592,25 @@ struct TailcatPairSheet: View {
     /// Added, and waiting for the approval.
     private var waiting: Bool { fingerprint != nil && end == nil && !online }
 
+    /// A discrete key for animated transitions between pairing phases.
+    private var phase: Int {
+        if end != nil { return 4 }
+        if online { return 3 }
+        if alreadyAllowed { return 2 }
+        if fingerprint != nil { return 1 }
+        return 0
+    }
+
+    private func badge(systemName: String, color: Color) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 24, weight: .semibold))
+            .foregroundStyle(color)
+            .frame(width: 52, height: 52)
+            .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
     var body: some View {
         VStack(spacing: 16) {
-            Text("Pair with \(code.name)").font(.title2.bold())
             if let end {
                 ContentUnavailableView {
                     Label(end == .expired ? "Pairing window expired." : "Couldn't pair.",
@@ -613,50 +629,82 @@ struct TailcatPairSheet: View {
                         .foregroundStyle(Color.page)
                     copyButton()
                 }
-            } else if alreadyAllowed {
-                if online {
-                    Text("Paired. Rex Go is connected.").foregroundStyle(.secondary)
-                } else {
-                    Text("Already allowed on \(code.name). Connecting…").foregroundStyle(.secondary)
-                    ProgressView()
+            } else if online {
+                Spacer(minLength: 8)
+                badge(systemName: "checkmark.circle.fill", color: .green)
+                    .symbolEffect(.bounce, value: online)
+                VStack(spacing: 6) {
+                    Text("Connected to \(code.name)").font(.title2.bold())
+                    Text("Paired and ready to use.").font(.subheadline).foregroundStyle(.secondary)
                 }
+                Spacer(minLength: 8)
+            } else if alreadyAllowed {
+                Spacer(minLength: 8)
+                badge(systemName: "checkmark.circle.fill", color: .green)
+                VStack(spacing: 6) {
+                    Text("Already Paired").font(.title2.bold())
+                    Text("Connecting to \(code.name)…").font(.subheadline).foregroundStyle(.secondary)
+                }
+                ProgressView()
+                Spacer(minLength: 8)
             } else if let fingerprint {
-                if online {
-                    Text("Paired. Rex Go is connected.").foregroundStyle(.secondary)
-                } else {
-                    Text("Request sent. On \(code.name), approve \(TailnetSettings.name) in Settings › Server › Devices only if its fingerprint is this one.")
+                badge(systemName: "checkmark.shield", color: .accentColor)
+                VStack(spacing: 6) {
+                    Text("Approve on \(code.name)").font(.title2.bold())
+                    Text("Confirm this fingerprint matches on \(code.name).")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                Text(fingerprint).font(.title3.monospaced().bold()).textSelection(.enabled)
-                if !online {
-                    if let deadline {
-                        TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                            Text("Time left: \(HostConfig.remainingPairingText(until: deadline, now: ctx.date))")
+                Text(fingerprint)
+                    .font(.title2.monospaced().bold())
+                    .textSelection(.enabled)
+                    .padding(.vertical, 14)
+                    .padding(.horizontal, 24)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                if let deadline {
+                    TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Waiting · \(HostConfig.remainingPairingText(until: deadline, now: ctx.date)) left")
                                 .font(.footnote.monospacedDigit())
                                 .foregroundStyle(.secondary)
+                                .contentTransition(.numericText())
                         }
                     }
+                } else {
                     ProgressView()
                 }
             } else {
-                Text("Asking \(code.name) to pair…").foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                badge(systemName: "antenna.radiowaves.left.and.right", color: .accentColor)
+                    .symbolEffect(.pulse)
+                VStack(spacing: 6) {
+                    Text("Pair with \(code.name)").font(.title2.bold())
+                    Text("Sending pairing request…").font(.subheadline).foregroundStyle(.secondary)
+                }
                 ProgressView()
+                Spacer(minLength: 8)
             }
-            Spacer(minLength: 12)
-            Button(waiting || (fingerprint == nil && !alreadyAllowed && end == nil) ? "Cancel" : "Done") { finish() }
-                .buttonStyle(.glass)
-                .font(.headline)
-                .controlSize(.extraLarge)
+            Spacer(minLength: 8)
+            Button { finish() } label: {
+                Text(waiting || (fingerprint == nil && !alreadyAllowed && end == nil) ? "Cancel" : "Done")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
+            .font(.headline)
+            .controlSize(.extraLarge)
         }
         .multilineTextAlignment(.center)
         .padding(24)
+        .animation(.snappy, value: phase)
         .presentationDetents([.medium])
         .interactiveDismissDisabled(waiting)
         .task { await pair() }
         .onChange(of: online) { _, on in
             guard on else { return }
             kept = true
-            Task { try? await Task.sleep(for: .seconds(1)); dismiss() }
+            Task { try? await Task.sleep(for: .milliseconds(800)); dismiss() }
         }
         // Cancel, a new code in its place or Settings closing: a host not
         // approved goes. It stays pending on the machine until its pairing

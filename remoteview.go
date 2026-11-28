@@ -917,16 +917,21 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				} else {
 					ui.Spacer(c)
 				}
-				// Rex Go pairs by a single QR dialog that defaults to the
-				// off-LAN relay address, with any same-network address
-				// behind an explicit choice.
-				if st.Running && ui.Button(c.Key("rexgo-qr"), locales.RemoteRexGoQR()).Disabled(page.busy).Clicked() {
-					a.openRexGoQR()
-				}
+				// Rex Go QR is the primary pairing entry when listening;
+				// Pair New Device… stays beside it for desktop/IP pairing.
 				if st.Enabled && !st.Pairing.Open {
-					if ui.PrimaryButton(c.Key("pair-start"), locales.RemotePairNew()).Disabled(page.busy).Clicked() {
-						a.remoteDo((*rex.Client).StartPairing, nil)
+					if st.Running {
+						if ui.Button(c.Key("pair-start"), locales.RemotePairNew()).Disabled(page.busy).Clicked() {
+							a.remoteDo((*rex.Client).StartPairing, nil)
+						}
+					} else {
+						if ui.PrimaryButton(c.Key("pair-start"), locales.RemotePairNew()).Disabled(page.busy).Clicked() {
+							a.remoteDo((*rex.Client).StartPairing, nil)
+						}
 					}
+				}
+				if st.Running && ui.PrimaryButton(c.Key("rexgo-qr"), locales.RemoteRexGoQR()).Disabled(page.busy).Clicked() {
+					a.openRexGoQR()
 				}
 			})
 		})

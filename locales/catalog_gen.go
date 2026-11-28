@@ -6948,6 +6948,110 @@ func (msgs Messages) RemoteQRTransportTailnet() string {
 	return Catalog.Format(msgs.locale, "remoteQRTransportTailnet", nil)
 }
 
+// RemoteQRApproveTitle says "Approve {device}?"
+// in the language the app shows.
+//
+// Title of the QR dialog once a pairing request arrives. {device} is the
+// requesting device's name.
+func RemoteQRApproveTitle(device string) string {
+	return In(i18n.Locale()).RemoteQRApproveTitle(device)
+}
+
+// RemoteQRApproveTitle says "Approve {device}?"
+// in the language of msgs.
+//
+// Title of the QR dialog once a pairing request arrives. {device} is the
+// requesting device's name.
+func (msgs Messages) RemoteQRApproveTitle(device string) string {
+	return Catalog.Format(msgs.locale, "remoteQRApproveTitle", map[string]any{"device": device})
+}
+
+// RemoteQRApproveHint says "Confirm this fingerprint matches your device."
+// in the language the app shows.
+//
+// One-line instruction over the large fingerprint in the QR dialog's
+// approval step.
+func RemoteQRApproveHint() string { return In(i18n.Locale()).RemoteQRApproveHint() }
+
+// RemoteQRApproveHint says "Confirm this fingerprint matches your device."
+// in the language of msgs.
+//
+// One-line instruction over the large fingerprint in the QR dialog's
+// approval step.
+func (msgs Messages) RemoteQRApproveHint() string {
+	return Catalog.Format(msgs.locale, "remoteQRApproveHint", nil)
+}
+
+// RemoteQRPairedTitle says "{device} paired"
+// in the language the app shows.
+//
+// Title of the QR dialog after approving a pairing request.
+func RemoteQRPairedTitle(device string) string { return In(i18n.Locale()).RemoteQRPairedTitle(device) }
+
+// RemoteQRPairedTitle says "{device} paired"
+// in the language of msgs.
+//
+// Title of the QR dialog after approving a pairing request.
+func (msgs Messages) RemoteQRPairedTitle(device string) string {
+	return Catalog.Format(msgs.locale, "remoteQRPairedTitle", map[string]any{"device": device})
+}
+
+// RemoteQRPairedHint says "This device can now connect to {host}."
+// in the language the app shows.
+//
+// Subtitle of the QR dialog after approving a pairing request.
+func RemoteQRPairedHint(host string) string { return In(i18n.Locale()).RemoteQRPairedHint(host) }
+
+// RemoteQRPairedHint says "This device can now connect to {host}."
+// in the language of msgs.
+//
+// Subtitle of the QR dialog after approving a pairing request.
+func (msgs Messages) RemoteQRPairedHint(host string) string {
+	return Catalog.Format(msgs.locale, "remoteQRPairedHint", map[string]any{"host": host})
+}
+
+// RemoteQRShowCode says "Show QR"
+// in the language the app shows.
+//
+// Button in the approval step to switch back to the QR code.
+func RemoteQRShowCode() string { return In(i18n.Locale()).RemoteQRShowCode() }
+
+// RemoteQRShowCode says "Show QR"
+// in the language of msgs.
+//
+// Button in the approval step to switch back to the QR code.
+func (msgs Messages) RemoteQRShowCode() string {
+	return Catalog.Format(msgs.locale, "remoteQRShowCode", nil)
+}
+
+// RemoteQRPairAnother says "Pair another"
+// in the language the app shows.
+//
+// Button in the paired confirmation step to return to the QR code.
+func RemoteQRPairAnother() string { return In(i18n.Locale()).RemoteQRPairAnother() }
+
+// RemoteQRPairAnother says "Pair another"
+// in the language of msgs.
+//
+// Button in the paired confirmation step to return to the QR code.
+func (msgs Messages) RemoteQRPairAnother() string {
+	return Catalog.Format(msgs.locale, "remoteQRPairAnother", nil)
+}
+
+// RemoteQRDone says "Done"
+// in the language the app shows.
+//
+// Primary button in the paired confirmation step to close the dialog.
+func RemoteQRDone() string { return In(i18n.Locale()).RemoteQRDone() }
+
+// RemoteQRDone says "Done"
+// in the language of msgs.
+//
+// Primary button in the paired confirmation step to close the dialog.
+func (msgs Messages) RemoteQRDone() string {
+	return Catalog.Format(msgs.locale, "remoteQRDone", nil)
+}
+
 // RemoteAddByKeyAsk says "Add by Key…"
 // in the language the app shows.
 //

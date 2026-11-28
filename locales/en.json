@@ -2311,6 +2311,34 @@
 	"@remoteQRTransportTailnet": {
 		"description": "Transport summary line in the QR dialog for a Tailscale tailnet HTTPS address."
 	},
+	"remoteQRApproveTitle": "Approve {device}?",
+	"@remoteQRApproveTitle": {
+		"description": "Title of the QR dialog once a pairing request arrives. {device} is the requesting device's name."
+	},
+	"remoteQRApproveHint": "Confirm this fingerprint matches your device.",
+	"@remoteQRApproveHint": {
+		"description": "One-line instruction over the large fingerprint in the QR dialog's approval step."
+	},
+	"remoteQRPairedTitle": "{device} paired",
+	"@remoteQRPairedTitle": {
+		"description": "Title of the QR dialog after approving a pairing request."
+	},
+	"remoteQRPairedHint": "This device can now connect to {host}.",
+	"@remoteQRPairedHint": {
+		"description": "Subtitle of the QR dialog after approving a pairing request."
+	},
+	"remoteQRShowCode": "Show QR",
+	"@remoteQRShowCode": {
+		"description": "Button in the approval step to switch back to the QR code."
+	},
+	"remoteQRPairAnother": "Pair another",
+	"@remoteQRPairAnother": {
+		"description": "Button in the paired confirmation step to return to the QR code."
+	},
+	"remoteQRDone": "Done",
+	"@remoteQRDone": {
+		"description": "Primary button in the paired confirmation step to close the dialog."
+	},
 	"remoteAddByKeyAsk": "Add by Key…",
 	"@remoteAddByKeyAsk": {
 		"description": "Remote page button: shows the fields that allow a client by its public key."
