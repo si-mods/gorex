@@ -227,8 +227,9 @@ struct ToastSlot: View {
 }
 
 /// The glass toast: a symbol or spinner, up to three lines, a button, and
-/// for a line with a button a close. One line is a capsule; more lines
-/// round its corners by the same radius.
+/// for a line with a button a close. One line is a capsule (40 pt tall,
+/// 46 with Retry and close: the 23 pt radius clamps to half the height);
+/// more lines keep that radius.
 private struct ToastView: View {
     let toast: Toast
     /// The edge it shows at, which a swipe toward dismisses it.
@@ -270,7 +271,7 @@ private struct ToastView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+        .glassEffect(.regular, in: .rect(cornerRadius: 23, style: .continuous))
         .padding(.horizontal, 16)
         .padding(.top, edge == .top ? 8 : 0)
         .animation(.easeInOut(duration: 0.15), value: toast.text)

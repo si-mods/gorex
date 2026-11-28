@@ -43,7 +43,7 @@ This doc adds one toast to Rex Go. The toast replaces the alerts that have only 
 | Status | An SF Symbol and up to three lines. The error variant has `exclamationmark.circle.fill` in the system red. | 4 s. 1 s more for each 20 characters past 40. 8 s at most. |
 | Progress | A spinner and up to three lines. It becomes its result in the same place. The result can have a button, such as Retry. | While the work runs. Then 3 s for a success. An error with a button stays until the user uses it or closes it. |
 
-- The text wraps to three rows at most; past that it ends in an ellipsis. One row is a capsule; more rows keep the same corner radius (20 pt), so the toast grows into a rounded rectangle. VoiceOver reads the full text. One row cut off the reason that mattered ("Can't Upload: The operation c…").
+- The text wraps to three rows at most; past that it ends in an ellipsis. One row is a capsule, with or without Retry (the 23 pt corner radius clamps to half the height); more rows keep that radius, so the toast grows into a rounded rectangle. VoiceOver reads the full text. One row cut off the reason that mattered ("Can't Upload: The operation c…").
 - A swipe toward its edge dismisses the toast: up at the top, down in a terminal. The toast follows the finger.
 - Only one place shows the toast: the latest screen that has one. A sheet shows it over a terminal, the terminal over the list.
 - A new toast replaces the old one. The old toast ends first.
