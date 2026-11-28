@@ -17,6 +17,7 @@ import (
 
 	"gorex/internal/config"
 	"gorex/internal/hosts"
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 )
 
@@ -72,6 +73,10 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return clientsCmd(args, out, errOut)
 	case "layout":
 		return layoutCmd(args, out, errOut)
+	case "projects":
+		return projectsCmd(args, out, errOut)
+	case "project":
+		return projectCmd(args, out, errOut)
 	case "new":
 		return newCmd(args, out, errOut)
 	case "split":
@@ -143,12 +148,14 @@ Usage:
   gorex [-S HOST] ls [--json]
   gorex clients [--json]
   gorex [-S HOST] layout [--json]
+  gorex [-S HOST] projects [--json]
+  gorex [-S HOST] project ls [--json] | new [NAME] [--dir DIR] [--space SPACE] [--color COLOR] [--json] | rename PROJECT NAME [--json] | move SESSION PROJECT [--json]
   gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
   gorex close [-s SESSION] [--tab] [--json]
   gorex rename [-s SESSION] [--json] NAME
   gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear
   gorex pack ls [--json] | search [QUERY] [--json] | install [--name ID] [--json] ID|DIR|GIT_URL | update [--check] [ID] | rm ID
-  gorex new [--dir DIR] [--json] [-- COMMAND...]
+  gorex [-S HOST] new [--project PROJECT] [--dir DIR] [--name NAME] [--json] [-- COMMAND...]
   gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] [--json] TEXT...
   gorex paste [-s SESSION] [-w TAB] [-b PANE] [--json] TEXT...
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
@@ -347,12 +354,24 @@ func listCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return ExitServer, true
 	}
+	raw, _ := c.Layout()
+	places := sessionPlaces(raw)
 	if *asJSON {
-		WriteJSON(out, infos)
+		outList := make([]sessionJSON, 0, len(infos))
+		for _, in := range infos {
+			pl := places[in.ID]
+			outList = append(outList, sessionJSON{
+				SessionInfo: in,
+				ProjectID:   pl.projectID,
+				Project:     pl.project,
+				TabID:       pl.tabID,
+			})
+		}
+		WriteJSON(out, outList)
 		return ExitOK, true
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tPROGRAM\tOWNER\tDIR\tATTACHED\tSTATUS")
+	fmt.Fprintln(tw, "ID\tPROJECT\tPROGRAM\tOWNER\tDIR\tATTACHED\tSTATUS")
 	for _, in := range infos {
 		program := in.Program
 		if program == "" {
@@ -372,7 +391,11 @@ func listCmd(args []string, out, errOut io.Writer) (int, bool) {
 		if owner == "" {
 			owner = "local"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\n", in.ID, program, owner, in.Dir, in.Attached, status)
+		proj := printable(places[in.ID].project)
+		if proj == "" {
+			proj = "-"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n", in.ID, proj, program, owner, in.Dir, in.Attached, status)
 	}
 	tw.Flush()
 	return ExitOK, true
@@ -522,6 +545,19 @@ func closeCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
+	if res.Code == "pane_not_found" && !*tab {
+		// An unplaced session (e.g. from raw c.Create) is in c.List() via
+		// resolveTarget above, even though no layout tab holds it: kill it so
+		// callers can still close it cleanly.
+		if err := c.Kill(target); err != nil {
+			fmt.Fprintln(errOut, err)
+			return codeFor(err), true
+		}
+		if *asJSON {
+			WriteJSON(out, rex.LayoutCommand{})
+		}
+		return ExitOK, true
+	}
 	if res.Code != "" {
 		fmt.Fprintf(errOut, "gorex: %s: %s\n", res.Code, res.Error)
 		return codeForResult(res), true
@@ -534,25 +570,76 @@ func closeCmd(args []string, out, errOut io.Writer) (int, bool) {
 
 func newCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("new", errOut)
-	dir := fs.String("dir", "", "directory to start in")
+	project := fs.String("project", "", "project name or ID (defaults to the current/active project)")
+	dir := fs.String("dir", "", "directory to start in (defaults to the project's folder)")
+	name := fs.String("name", "", "tab label")
 	asJSON := fs.Bool("json", false, "print JSON")
 	if code, stop := parse(fs, args); stop {
 		return code, true
+	}
+	projectSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "project" {
+			projectSet = true
+		}
+	})
+	if projectSet && strings.TrimSpace(*project) == "" {
+		fmt.Fprintln(errOut, "gorex new: --project requires a project name or ID")
+		return ExitUsage, true
 	}
 	c, code := connect(errOut)
 	if c == nil {
 		return code, true
 	}
 	defer c.Close()
-	info, err := c.Create(rex.CreateOptions{Command: fs.Args(), Dir: *dir, Cols: 80, Rows: 24})
+
+	raw, err := c.Layout()
 	if err != nil {
 		fmt.Fprintln(errOut, err)
-		return ExitFailed, true
+		return codeFor(err), true
+	}
+	st := layout.Parse(raw)
+	resolvedDir := localDir(*dir)
+	var proj *layout.Workspace
+	if projectSet {
+		proj, err = resolveProject(&st, *project, serverTarget == "")
+	} else {
+		proj, err = defaultProject(&st, currentLocalSession(), resolvedDir, serverTarget == "")
+	}
+	if err != nil {
+		fmt.Fprintln(errOut, "gorex new:", err)
+		return codeFor(err), true
+	}
+
+	res, err := c.Command(rex.LayoutCommand{
+		Op:      "tab.create",
+		Space:   proj.ID,
+		Dir:     resolvedDir,
+		Name:    *name,
+		Command: fs.Args(),
+	})
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	if res.Code != "" {
+		fmt.Fprintf(errOut, "gorex: %s: %s\n", res.Code, res.Error)
+		return codeForResult(res), true
 	}
 	if *asJSON {
-		WriteJSON(out, info)
+		infos, _ := c.List()
+		info, ok := findSession(infos, res.New)
+		if !ok {
+			info = rex.SessionInfo{ID: res.New, Dir: resolvedDir}
+		}
+		WriteJSON(out, sessionJSON{
+			SessionInfo: info,
+			ProjectID:   proj.ID,
+			Project:     proj.Name,
+			TabID:       res.Tab,
+		})
 	} else {
-		fmt.Fprintln(out, info.ID)
+		fmt.Fprintln(out, res.New)
 	}
 	return ExitOK, true
 }
@@ -915,7 +1002,7 @@ func parseValue(v string) any { return v }
 
 func codeForResult(res rex.LayoutCommand) int {
 	switch res.Code {
-	case "pane_not_found", "tab_not_found":
+	case "pane_not_found", "tab_not_found", "space_not_found":
 		return ExitTarget
 	}
 	return ExitFailed
@@ -925,7 +1012,7 @@ func codeFor(err error) int {
 	if err == nil {
 		return ExitOK
 	}
-	if errors.Is(err, errNoSession) || errors.Is(err, errAmbiguous) ||
+	if errors.Is(err, errNoSession) || errors.Is(err, errNoProject) || errors.Is(err, errNoAvailableProject) || errors.Is(err, errAmbiguous) ||
 		strings.Contains(err.Error(), "no session") || strings.Contains(err.Error(), "session has ended") {
 		return ExitTarget
 	}

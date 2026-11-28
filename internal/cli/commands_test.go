@@ -24,6 +24,7 @@ import (
 func startServer(t *testing.T) *rex.Client {
 	t.Helper()
 	t.Setenv("GOREX_DIR", t.TempDir())
+	t.Setenv("GOREX_SESSION", "")
 	go func() { _ = rex.Serve() }()
 	for i := 0; i < 100; i++ {
 		if _, err := os.Stat(rex.SocketPath()); err == nil {
@@ -62,6 +63,10 @@ func TestCLI(t *testing.T) {
 		t.Skip("uses sh")
 	}
 	c := startServer(t)
+
+	if code, _, _, errOut := runMain(t, "project", "new", "work", "--dir", t.TempDir()); code != ExitOK {
+		t.Fatalf("project new: %d %s", code, errOut)
+	}
 
 	code, _, out, errOut := runMain(t, "new", "--json")
 	if code != ExitOK {
@@ -613,6 +618,9 @@ func TestSessionCommandReachesItsServer(t *testing.T) {
 		t.Cleanup(func() { c.Shutdown(); c.Close() })
 	}
 	spawn(t.TempDir())
+	if code, _, _, errOut := runMain(t, "project", "new", "work", "--dir", t.TempDir()); code != ExitOK {
+		t.Fatalf("project new: %d %s", code, errOut)
+	}
 	envFile := filepath.Join(t.TempDir(), "env")
 	if code, _, _, errOut := runMain(t, "new", "--", "sh", "-c", "env > "+envFile+".tmp && mv "+envFile+".tmp "+envFile+"; exec sleep 600"); code != ExitOK {
 		t.Fatalf("new: %d %s", code, errOut)

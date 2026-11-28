@@ -84,7 +84,9 @@ may be to another host.
 gorex ls [--json]
 gorex clients [--json]
 gorex layout [--json]
-gorex new [--dir DIR] [--json] [-- COMMAND...]
+gorex [-S HOST] projects [--json]
+gorex [-S HOST] project ls [--json] | new [NAME] [--dir DIR] [--space SPACE] [--color COLOR] [--json] | rename PROJECT NAME [--json] | move SESSION PROJECT [--json]
+gorex [-S HOST] new [--project PROJECT] [--dir DIR] [--name NAME] [--json] [-- COMMAND...]
 gorex split [-s SESSION] [-w TAB] [-b PANE] [--down] [--dir DIR] [--json] [-- COMMAND...]
 gorex close [-s SESSION] [-w TAB] [-b PANE] [--tab] [--json]
 gorex rename [-s SESSION] [-w TAB] [-b PANE] NAME [--json]
@@ -101,8 +103,15 @@ gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION
 gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
 ` + "```" + `
 
-- ` + "`new`" + ` creates a session and prints its ID. It runs the command after
-  ` + "`--`" + ` in its first pane, or a shell. Use ` + "`--dir`" + ` to set the directory.
+- ` + "`projects`" + ` (or ` + "`project ls`" + `) lists projects with their IDs, names, directories,
+  tabs, and panes. ` + "`project new`" + ` creates a project for a folder (and opens its
+  first tab there), ` + "`project rename`" + ` renames a project, and ` + "`project move`" + `
+  moves a session's tab into another project without restarting its program.
+- ` + "`new`" + ` opens a tab in a project and prints its session ID. Without ` + "`--project`" + `,
+  it places the tab in your current ` + "`GOREX_SESSION`" + `'s project, else the active
+  project in the GoRex window (failing if the server has no project yet — create
+  one first with ` + "`gorex project new`" + `). Pass ` + "`--project NAME|ID`" + ` to target a
+  specific project and ` + "`--dir`" + ` to override the starting directory.
 - ` + "`split`" + ` splits the selected pane right, or below with ` + "`--down`" + `, and prints
   the new session's ID. The command after ` + "`--`" + ` runs in the new pane, or a
   shell does; wrap shell syntax such as a pipe in ` + "`sh -c '...'`" + `.
@@ -165,16 +174,24 @@ gorex -S build-linux delegate --resume <AGENT_SESSION> --dir /home/alice/repos/a
 
 ## Common requests
 
-Open a tab with a shell in the project:
+List projects, or create a new project for a folder:
+
+` + "```sh" + `
+gorex projects --json
+gorex project new myapp --dir /path/to/myapp --json
+` + "```" + `
+
+Open a tab in the current/active project (or pass ` + "`--project`" + ` to choose one):
 
 ` + "```sh" + `
 gorex new --dir "$PWD" --json
+gorex new --project myapp --dir "$PWD" --json
 ` + "```" + `
 
 Open a command in a tab and keep its output:
 
 ` + "```sh" + `
-gorex new --dir "$PWD" --json -- npm test
+gorex new --project myapp --dir "$PWD" --json -- npm test
 ` + "```" + `
 
 Split below the current pane and run a monitor there:

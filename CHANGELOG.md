@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **cli:** add `gorex projects` and `gorex project ls|new|rename|move` to inspect, create, rename, and move tabs across projects, and expose project/tab metadata in `gorex ls` and `gorex new --json`
+
+### Bug Fixes
+
+* **cli:** place `gorex new` sessions as tabs in the current/active project (or `--project <name|id>`), error clearly when no project exists instead of creating invisible orphan sessions, and let `gorex close -s` clean up unplaced sessions
+
 ## 0.68.2
 
 ### Bug Fixes
