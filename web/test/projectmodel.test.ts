@@ -33,9 +33,10 @@ test("parseProject reads {dir, space, used}, and {} as the tabs with no project"
   assert.equal(parseProject({ dir: "/a", used: "0001-01-01T00:00:00Z" })!.used, 0);
 });
 
-test("featureVersion reads the welcome's versions in either shape", () => {
+test("featureVersion reads the welcome's versions in every supported shape", () => {
   assert.equal(featureVersion({ features: ["gorex.projects"], feature_versions: { "gorex.projects": 2 } }, "gorex.projects"), 2);
   assert.equal(featureVersion({ features: [{ name: "gorex.projects", version: 2 }] }, "gorex.projects"), 2);
+  assert.equal(featureVersion({ features: ["gorex.projects.v2"] }, "gorex.projects"), 2);
   assert.equal(featureVersion({ features: ["gorex.projects"] }, "gorex.projects"), 0);
   assert.equal(featureVersion(undefined, "gorex.projects"), 0);
 });

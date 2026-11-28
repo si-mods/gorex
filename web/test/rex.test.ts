@@ -48,6 +48,7 @@ class MockSocket implements SocketLike {
 function makeTransport(): { transport: Transport; sockets: MockSocket[] } {
   const sockets: MockSocket[] = [];
   const transport: Transport = {
+    kind: "direct",
     socket(path: string, protocol?: string) {
       const ws = new MockSocket(path, protocol ?? "");
       sockets.push(ws);
@@ -102,7 +103,7 @@ test("Control.open sends hello and applies welcome metadata", async () => {
       protocol: RexProtocol.controlProtocol,
       api_revision: 14,
       client: { id: "cli-1", reconnect_token: "tok-next" },
-      features: ["tunnel", "download"],
+      features: ["tunnel", "download", "gorex.projects.v2"],
     }),
   );
 
@@ -111,6 +112,7 @@ test("Control.open sends hello and applies welcome metadata", async () => {
   assert.equal(c.reconnectToken, "tok-next");
   assert.equal(c.apiRevision, 14);
   assert.equal(c.features.has("tunnel"), true);
+  assert.equal(c.features.has("gorex.projects"), true);
 
   const events: Array<{ type: string; payload: any }> = [];
   c.onEvent = (e) => events.push({ type: e.type, payload: e.payload });

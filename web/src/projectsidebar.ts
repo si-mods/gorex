@@ -14,11 +14,9 @@ import { t } from "./i18n";
 import { MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
 import { dirName, groupLook, GroupLook, groupProjects, HostModel, projectColor, ProjectRow, TabRow } from "./projectmodel";
 import type { HostView, ProjectOps } from "./projectops";
-import { hostHead, problemLine, setTileColumn, spaceName, redraw, renaming, sidebarApp, tilesRoom, windowRow } from "./sidebar";
+import { ProjectColors } from "./rex-protocol.gen";
+import { hostHead, problemLine, redraw, registerProjectViews, renaming, setTileColumn, sidebarApp, spaceName, tilesRoom, windowRow } from "./sidebar";
 import { setTooltip } from "./tooltip";
-
-/** The colors a space can take, as a dot in the picker. */
-export const spaceColors = ["#e5484d", "#f76b15", "#e5a000", "#30a46c", "#3e63dd", "#8e4ec6"];
 
 let ops: ProjectOps;
 /** The width of the column of tab tiles in the list being drawn. */
@@ -27,6 +25,7 @@ let column = tilesWidth(0);
 /** Sets what the projects do; once, as the page starts. */
 export function initProjectView(o: ProjectOps) {
   ops = o;
+  registerProjectViews({ bar: projectBar, tree: projectTree });
 }
 
 const expandedKey = "gorex.web.expanded";
@@ -134,7 +133,8 @@ export function spaceMenu(): MenuItem[] {
   const names = ops.spaces(vs);
   const now = ops.space(vs);
   const s = ops.store;
-  const items: MenuItem[] = names.map((n) => ({ label: ops.label(n), checked: n === now, color: s.colors[n], run: () => pickSpace(n) }));
+  const items: MenuItem[] = names.map((n) => ({ label: ops.label(n), checked: n === now, color: projectColor(s.colors[n]), run: () => pickSpace(n) }));
+  const currentHex = projectColor(s.colors[now]);
   items.push(
     "separator",
     { label: t("spaceNewMenu"), run: () => void ops.newSpace() },
@@ -143,7 +143,12 @@ export function spaceMenu(): MenuItem[] {
     {
       label: t("spaceColorMenu"),
       submenu: [
-        ...spaceColors.map((c) => ({ label: "", color: c, checked: s.colors[now] === c, run: () => setColor(now, c) })),
+        ...Object.entries(ProjectColors).map(([id, hex]) => ({
+          label: "",
+          color: hex,
+          checked: s.colors[now] === id || currentHex === hex,
+          run: () => setColor(now, id),
+        })),
         "separator" as const,
         { label: t("spaceColorNone"), disabled: !s.colors[now], run: () => setColor(now, undefined) },
       ],
@@ -170,7 +175,7 @@ function picker(): HTMLButtonElement {
   setTooltip(b, t("spacePickerLabel"), "project-sidebar");
   b.setAttribute("aria-label", t("spacePickerLabel"));
   b.setAttribute("aria-haspopup", "menu");
-  const color = ops.store.colors[now];
+  const color = projectColor(ops.store.colors[now]);
   if (color) {
     const dot = el("i", "color-dot");
     dot.style.background = color;

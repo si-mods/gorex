@@ -13,7 +13,7 @@ import { Host, icon } from "./hosts";
 import { t } from "./i18n";
 import { draggable, MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
 import { prefs } from "./prefs";
-import { projectBar, projectTree } from "./projectsidebar";
+import { dirName } from "./projectmodel";
 import { mostUrgent, rank, Status, tiles, tilesWidth } from "./programs";
 import { setTooltip } from "./tooltip";
 import { layoutOf, leavesOf, WindowView } from "./window";
@@ -54,6 +54,7 @@ export interface SidebarApp {
 }
 
 let app: SidebarApp;
+let projectViews: { bar(nav: HTMLElement, c: HostConn | undefined): boolean; tree(nav: HTMLElement): boolean } | undefined;
 
 /** What the sidebar's rows do, for the projects' sidebar (projectsidebar.ts). */
 export function sidebarApp(): SidebarApp {
@@ -63,6 +64,11 @@ export function sidebarApp(): SidebarApp {
 /** Sets what the rows do; once, as the page starts. */
 export function initSidebar(a: SidebarApp) {
   app = a;
+}
+
+/** Registers the projects v2 bar and sidebar renderers without a circular import. */
+export function registerProjectViews(v: { bar(nav: HTMLElement, c: HostConn | undefined): boolean; tree(nav: HTMLElement): boolean }) {
+  projectViews = v;
 }
 
 const list = () => document.getElementById("list")!;
@@ -101,11 +107,36 @@ export function windowName(w: any): string | undefined {
   return label && label !== "Window " + String(w.window_id).slice(-8) ? label : undefined;
 }
 
-/** A window's title, as the desktop names a tab (Tab.label): its name, else its terminal's title, else its label. */
+/**
+ * A window's title, as iOS's Host.title and the desktop's Tab.label resolve it:
+ * its user-given name, else its focused pane's name or terminal title, else its
+ * project's name or folder name, else its foreground program, else "Tab" —
+ * never the gateway's raw "Window <ID>".
+ */
 export function windowTitle(c: HostConn, w: any): string {
+  const custom = windowName(w);
+  if (custom) return custom;
   const blocks = leavesOf(layoutOf(w));
   const focused = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
-  return windowName(w) || (focused && (paneName(c, focused) || c.titles.get(focused))) || w.label || t("sidebarWindow");
+  if (focused) {
+    const p = paneNameIn(w, focused) || c.titles.get(focused);
+    if (p) return p;
+  }
+  for (const s of c.sessions.values()) {
+    if ((s.view?.windows ?? []).some((x: any) => x.window_id === w.window_id)) {
+      if (s.project?.dir) return s.label || dirName(s.project.dir);
+      break;
+    }
+  }
+  const prog = focused ? c.programs.get(focused) : undefined;
+  return prog || t("sidebarWindow");
+}
+
+/** The user-given name of a block within one window's layers; undefined for default "shell". */
+export function paneNameIn(w: any, block: string): string | undefined {
+  for (const l of w?.layers ?? [])
+    for (const b of l?.blocks ?? []) if (b.block_id === block) return b.label && b.label !== "shell" ? b.label : undefined;
+  return undefined;
 }
 
 /**
@@ -116,9 +147,10 @@ export function windowTitle(c: HostConn, w: any): string {
  */
 export function paneName(c: HostConn, block: string): string | undefined {
   for (const s of c.sessions.values())
-    for (const w of s.view?.windows ?? [])
-      for (const l of w.layers ?? [])
-        for (const b of l.blocks ?? []) if (b.block_id === block) return b.label && b.label !== "shell" ? b.label : undefined;
+    for (const w of s.view?.windows ?? []) {
+      const n = paneNameIn(w, block);
+      if (n) return n;
+    }
   return undefined;
 }
 
@@ -250,8 +282,8 @@ export function sidebar(force = false) {
   const nav = document.createElement("nav");
   tileColumn = undefined;
   if (!prefs.tabPlacement) {
-    if (!projectBar(nav, c)) tabBar(nav, c);
-  } else if (!projectTree(nav)) {
+    if (!projectViews?.bar(nav, c)) tabBar(nav, c);
+  } else if (!projectViews?.tree(nav)) {
     if (prefs.sidebarView === "host") hostSections(nav);
     else spaceSections(nav);
   }

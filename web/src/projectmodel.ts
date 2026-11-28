@@ -40,14 +40,45 @@ export function parseProject(j: any): ProjectInfo | undefined {
   };
 }
 
-/** The welcome's version of a feature: a map of versions, or a feature written as an object. 0 when none. */
-export function featureVersion(welcome: any, name: string): number {
-  for (const map of [welcome?.feature_versions, welcome?.features_version, welcome?.versions]) {
-    const v = map?.[name];
-    if (typeof v === "number") return v;
+/**
+ * The features a welcome lists and the versions it gives them, matching
+ * iOS's ControlConnection.features(of:): a feature may be a string, `<name>.v<N>`,
+ * an object `{name, version}`, or an entry in `feature_versions`.
+ */
+export function welcomeFeatures(welcome: any): { names: Set<string>; versions: Map<string, number> } {
+  const names = new Set<string>();
+  const versions = new Map<string, number>();
+  const add = (rawName: string, rawVersion?: number) => {
+    let name = rawName;
+    let version = rawVersion;
+    const m = /^(.+)\.v(\d+)$/.exec(name);
+    if (m) {
+      name = m[1];
+      if (version === undefined) version = Number(m[2]);
+    }
+    names.add(name);
+    if (typeof version === "number") versions.set(name, Math.max(versions.get(name) ?? 0, version));
+  };
+  for (const x of Array.isArray(welcome?.features) ? welcome.features : []) {
+    if (typeof x === "string") add(x);
+    else if (x && typeof x === "object") {
+      const n = x.name ?? x.id ?? x.feature;
+      if (typeof n === "string") add(n, typeof x.version === "number" ? x.version : undefined);
+    }
   }
-  const f = (Array.isArray(welcome?.features) ? welcome.features : []).find((x: any) => x && typeof x === "object" && (x.name === name || x.id === name || x.feature === name));
-  return typeof f?.version === "number" ? f.version : 0;
+  for (const map of [welcome?.feature_versions, welcome?.features_version, welcome?.versions]) {
+    if (map && typeof map === "object" && !Array.isArray(map)) {
+      for (const [k, v] of Object.entries(map)) {
+        if (typeof v === "number") add(k, v);
+      }
+    }
+  }
+  return { names, versions };
+}
+
+/** The welcome's version of a feature: 0 when none. */
+export function featureVersion(welcome: any, name: string): number {
+  return welcomeFeatures(welcome).versions.get(name) ?? 0;
 }
 
 /** A tab of a project, as the sidebar names it. */

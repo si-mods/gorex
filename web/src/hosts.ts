@@ -126,19 +126,24 @@ export function parseTailcatAddress(typed: string): { address: string; name?: st
   } catch {
     return undefined;
   }
-  if (u.protocol !== "rexgo:" || u.hostname !== "tailcat") return undefined;
+  if (u.protocol !== "rexgo:" || u.hostname.toLowerCase() !== "tailcat") return undefined;
+  if (u.pathname || u.username || u.password || u.port || u.hash) return undefined;
   const a = u.searchParams.get("a") ?? "";
   if (!/^tc[0-9A-Za-z_-]{8,}$/.test(a)) return undefined;
-  const n = u.searchParams.get("n") ?? undefined;
+  const n = u.searchParams.get("n")?.trim() || undefined;
   return { address: a, ...(n ? { name: n } : {}) };
 }
 
-
-
-/** A host's name until the user gives one: the first label of a DNS name, else the whole host (an IP address). */
+/**
+ * A host's name until the user gives one, as iOS's HostConfig.name: an IP
+ * address as is, else the first label of the DNS name, less the "-gorex"
+ * suffix GoRex's built-in Tailscale adds.
+ */
 export function defaultName(url: string): string {
-  const h = new URL(url).hostname;
-  return /^[\d.]+$|^\[/.test(h) ? h : h.split(".")[0] || h;
+  const h = new URL(url).hostname.replace(/^\[|\]$/g, "");
+  if (/^[\d.]+$|:/.test(h)) return h;
+  const label = h.split(".")[0] || h;
+  return label.endsWith("-gorex") && label.length > 6 ? label.slice(0, -6) : label;
 }
 
 /** The command that makes a host trust this page. */

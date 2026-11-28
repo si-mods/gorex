@@ -4,6 +4,7 @@
 // carrying a terminal's bytes.
 
 import { Msg, PlainKey, t } from "./i18n";
+import { welcomeFeatures } from "./projectmodel";
 import { RexProtocol } from "./rex-protocol.gen";
 import { joinHostURL, withToken } from "./share";
 
@@ -148,7 +149,7 @@ export class Control {
     return new Promise((resolve, reject) => {
       if (signal?.aborted) return reject(new RexError("closed", () => t("errorOffline")));
       // The constructor throws for a URL the page may not open (mixed content).
-      const ws = transport.socket("/api/control", "rex.control.v1");
+      const ws = transport.socket("/api/control", RexProtocol.controlProtocol);
       const c = new Control(transport, ws);
       let welcomed = false;
       const give = (e: RexError) => {
@@ -176,7 +177,7 @@ export class Control {
         if (typeof m.data !== "string") return;
         const msg = JSON.parse(m.data);
         if (!welcomed) {
-          if (msg.type !== "welcome" || msg.protocol !== "rex.control.v1") {
+          if (msg.type !== "welcome" || msg.protocol !== RexProtocol.controlProtocol) {
             ws.close();
             reject(new RexError("protocol", () => t("errorProtocol")));
             return;
@@ -188,7 +189,7 @@ export class Control {
           c.reconnectToken = msg.client?.reconnect_token;
           if (typeof msg.api_revision === "number") c.apiRevision = msg.api_revision;
           c.welcome = msg;
-          c.features = new Set((msg.features ?? []).map((f: any) => (typeof f === "string" ? f : (f?.name ?? f?.id ?? f?.feature))).filter((f: unknown) => typeof f === "string"));
+          c.features = welcomeFeatures(msg).names;
           resolve(c);
           return;
         }
