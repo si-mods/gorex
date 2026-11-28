@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -94,7 +95,7 @@ func (a *App) view(c *ui.Context) {
 	if a.win != nil && runtime.GOOS == "darwin" {
 		a.winR = a.win.CornerRadius()
 	}
-	breathing = a.focusedWin
+	unfocusedBreathing.Store(!a.focusedWin)
 	if a.focusedWin {
 		a.syncHostItems()
 	}
@@ -388,7 +389,7 @@ func drawIconButton(c *ui.Context, k *colors, name, label string, size, iconSize
 	} else if b.Hovered() || active {
 		b.Background(k.hover)
 	}
-	if fadeColors {
+	if fadeColorsEnabled() {
 		b.Transition(hoverFade)
 	}
 	col := k.iconMuted
@@ -480,7 +481,7 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	// pointer over a page, the page has the keyboard, and its pane takes
 	// the tab's focus, so that the shortcuts act on it.
 	if a.focusReq == nil && !a.contentFocus && a.pageHover != nil && t.Focus != a.pageHover &&
-		!a.paletteOpen && !a.wsConfirm && !a.teleportAsk.open && !a.wsOpen && !a.hostOpen && a.paneRenaming == nil && a.renaming == nil && a.findPane == nil {
+		!a.paletteOpen && !a.wsConfirm && !a.teleportAsk.open && !a.pickerOpen && !a.spaces.open && !a.hostOpen && a.paneRenaming == nil && a.renaming == nil && a.findPane == nil {
 		t.setFocus(a.pageHover)
 		a.changed()
 	}
@@ -589,8 +590,8 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	}
 	cell.Children(func() {
 		if tr != nil && tr.Position {
-			fadeColors = false
-			defer func() { fadeColors = true }()
+			prev := suppressFadeColors.Swap(true)
+			defer suppressFadeColors.Store(prev)
 		}
 		a.paneCard(c, k, t, p, held).Grow(1)
 	})
@@ -765,8 +766,8 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 		// element of a Transition of its own would be laid out where the
 		// cell goes, its terminal out of the cell on the way.
 		if moving {
-			fadeColors = false
-			defer func() { fadeColors = true }()
+			prev := suppressFadeColors.Swap(true)
+			defer suppressFadeColors.Store(prev)
 		}
 		a.paneCard(c, k, t, p, held).Grow(1)
 		if f.Zoom {
@@ -922,7 +923,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 			Shadow(0, 1, 2, 0, shadow).
 			Shadow(0, 6, 22, -2, shadow)
 	}
-	if fadeColors {
+	if fadeColorsEnabled() {
 		card.Transition(hoverFade)
 	}
 	hovered := card.Hovered()
@@ -1039,8 +1040,8 @@ var findOpen = &ui.Motion{Collapse: true, Opacity: 0}
 func (a *App) findBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 	row := ui.Row(c.Key("find")).Height(30).Shrink(0).Padding(0, 8).Gap(6).AlignItems(ui.Center).
 		Background(k.hover).Radius(k.radius(radiusS))
-	// Not in a pane that moves, as fadeColors tells.
-	if anim := motion(c); anim != nil && fadeColors {
+	// Not in a pane that moves, as fadeColorsEnabled tells.
+	if anim := motion(c); anim != nil && fadeColorsEnabled() {
 		row.Transition(ui.ElementTransition{Animation: anim, Colors: true, Enter: findOpen})
 	}
 	row.Children(func() {
@@ -1513,10 +1514,10 @@ func statusTip(s *rex.ProgramStatus) string {
 	return strings.Join(parts, " · ")
 }
 
-// breathing tells that the window being built has the focus, which the
-// working dots animate in: out of it, a program working for hours would
-// keep the window painting for nothing.
-var breathing = true
+// unfocusedBreathing disables workingDots animation when the window being built
+// lacks focus: out of it, a program working for hours would keep the window
+// painting for nothing.
+var unfocusedBreathing atomic.Bool
 
 // workingDots draws three dots that pulse and hop left-to-right while a
 // program is working, or stand still when unfocused or animation is off.
@@ -1524,7 +1525,7 @@ func workingDots(c *ui.Context, col ui.Color) ui.Element {
 	const dotBase = float32(3.0)
 	const gap = float32(2.5)
 	e := ui.Box(c).Size(16, 10).Shrink(0)
-	animates := breathing && motion(c) != nil
+	animates := !unfocusedBreathing.Load() && motion(c) != nil
 	e.Draw(func(p *ui.Painter, r ui.Rect) {
 		if animates {
 			p.AnimationFrameRate(30)

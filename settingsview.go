@@ -55,9 +55,6 @@ var settingsUI struct {
 	toast toastSlot
 }
 
-// Run is set here: the window's view lists the commands, which list this one.
-func init() { cmdSettings.Run = func(a *App) { a.openSettings() } }
-
 // startServerInfoPoll asks the Rex API gateway every ten seconds while the
 // server page shows. Each ask is a control connection that every Rex
 // client hears of, and the build cannot change while the gateway runs:
@@ -120,29 +117,9 @@ func (a *App) openSettings() {
 			settingsUI.fonts = append(settingsUI.fonts, f.Name)
 		}
 	}
-	opts := mygo.WindowOptions{
-		Title:     locales.SettingsTitle(),
-		Width:     780,
-		Height:    540,
-		MinWidth:  620,
-		MinHeight: 400,
-		// No wider than the sidebar and the settings column need.
-		MaxWidth:             settingsSidebarW + 2*settingsPad + settingsMaxW + 4,
-		StateKey:             "settings",
-		TitleBarStyle:        mygo.TitleBarHidden,
-		CornerRadius:         windowCorner,
-		TrafficLightPosition: &mygo.Point{X: 18, Y: 19},
-		BackgroundColor:      "light-dark(#efe1e6, #231e27)",
-		Vibrancy:             glassVibrancy(),
-		Transparent:          glassTransparent(),
-		Content:              ui.View(a.settingsView),
-		// A click that brings the window to the front only does that; see
-		// DESIGN.md, Decisions.
-		ConsumeActivationClick: true,
-	}
-	if ownControls {
-		opts.HideWindowButtons = true
-	}
+	opts := baseWindowOptions(locales.SettingsTitle(), "settings", 780, 540, 620, 400, mygo.Point{X: 18, Y: 19}, a.settingsView)
+	// No wider than the sidebar and the settings column need.
+	opts.MaxWidth = settingsSidebarW + 2*settingsPad + settingsMaxW + 4
 	win := mygo.NewWindow(opts)
 	settingsUI.win = win
 	win.SetMenu(mygo.NewMenu(nil)) // not the terminal window's menus
@@ -155,7 +132,7 @@ func (a *App) openSettings() {
 		shortcutsUI = shortcutsState{}
 		if a.st != nil && a.st.recording {
 			a.st.recording = false
-			rebuildMenu(a.st)
+			doRebuildMenu(a.st)
 		}
 		settingsUI.win = nil
 		settingsUI.toast = toastSlot{}
@@ -481,7 +458,7 @@ func factRow(c *ui.Context, k *colors, label, value string) {
 
 // groupRows counts the rows of the group being built: each after the
 // first has a hairline above it.
-var groupRows int
+var groupRows atomic.Int32
 
 // settingsGroup is a group of rows on one card, with an optional label
 // and note above it, and an optional footnote under it.
@@ -497,8 +474,8 @@ func settingsGroup(c *ui.Context, k *colors, label, note, foot string, body func
 				}
 			})
 		}
-		saved := groupRows
-		groupRows = 0
+		saved := groupRows.Swap(0)
+		defer groupRows.Store(saved)
 		ui.Column(c).Gap(2).Children(func() {
 			// A group has the face of the main window's terminals.
 			group := raisedShadow(ui.Column(c).Radius(k.radius(radiusXL)).Clip().Border(1, k.cardBorder), k)
@@ -508,17 +485,15 @@ func settingsGroup(c *ui.Context, k *colors, label, note, foot string, body func
 				ui.Text(c, foot).FontSize(fontFootnote).TextColor(k.textFaint).LineHeight(1.4).MaxWidth(settingsHintW).Padding(0, 14)
 			}
 		})
-		groupRows = saved
 	})
 }
 
 // groupRow is a row of a group, keyed by key unless nil: a hairline
 // above it but the first, and its content laid out by the caller.
 func groupRow(c *ui.Context, k *colors, key any) ui.Element {
-	if groupRows > 0 {
+	if groupRows.Add(1) > 1 {
 		ui.Box(c).Height(0.5).Margin(0, 0, 0, 14).Shrink(0).Background(k.tabSep)
 	}
-	groupRows++
 	if key != nil {
 		c = c.Key(key)
 	}

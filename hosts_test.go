@@ -21,10 +21,19 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/hosts"
 	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
+
+func hostsPath() string { return hosts.Path(rex.Dir()) }
+
+func (s *paneStream) Detached() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.detached
+}
 
 // dialGate, when set, holds the hosts' connections until it closes.
 var dialGate atomic.Pointer[chan struct{}]

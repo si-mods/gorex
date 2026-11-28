@@ -540,7 +540,7 @@ func (a *App) menuRow(c *ui.Context, k *colors, key string, chosen bool, label, 
 
 // closeMenus closes the window's popovers of spaces and projects.
 func (a *App) closeMenus() {
-	a.spaces.open, a.pickerOpen, a.wsOpen = false, false, false
+	a.spaces.open, a.pickerOpen = false, false
 }
 
 // spaceSwatchMark is a space's color: a dot of it, or an outline for none.

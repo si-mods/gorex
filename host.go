@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"slices"
@@ -159,9 +160,20 @@ func menuIcon(name string) *mygo.MenuIcon {
 	if m, ok := menuIcons[name]; ok {
 		return m
 	}
-	m, err := mygo.NewMenuIconSVG(icon(name), true)
+	svg := icon(name)
+	if svg == nil {
+		if len(menuIcons) < 512 {
+			menuIcons[name] = nil
+		}
+		return nil
+	}
+	m, err := mygo.NewMenuIconSVG(svg, true)
 	if err != nil {
-		panic(err)
+		log.Printf("gorex: menu icon %q: %v", name, err)
+		if len(menuIcons) < 512 {
+			menuIcons[name] = nil
+		}
+		return nil
 	}
 	menuIcons[name] = m
 	return m

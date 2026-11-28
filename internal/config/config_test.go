@@ -88,8 +88,9 @@ func TestPath(t *testing.T) {
 		t.Fatalf("path %q", Path())
 	}
 	t.Setenv("GOREX_CONFIG", "")
+	t.Setenv("GOREX_DIR", "")
 	home := t.TempDir()
-	defer stubHomeDirs(home, "")()
+	defer stubHomeDirs(home, t.TempDir())()
 	// A legacy file wins while the move has not run.
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)

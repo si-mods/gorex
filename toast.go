@@ -101,9 +101,6 @@ func settingsToastError(text string) {
 	}
 }
 
-// toastText is what the window's toast says, "" while none shows.
-func (a *App) toastText() string { return a.toast.text() }
-
 // toasts shows the window's toast, above the banner while that shows.
 func (a *App) toasts(c *ui.Context, k *colors) { a.toast.build(c, k, a.bannerTop) }
 

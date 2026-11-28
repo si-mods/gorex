@@ -1083,12 +1083,6 @@ func (st *store) upgradeServer() bool {
 	return true
 }
 
-func init() { cmdRestartServer.Run = func(a *App) { a.st.restartServer() } }
-
-// restartServer offers to restart a server that is behind the app's
-// executable (serverBehind), as after an update, and takes the next one:
-// the windows stay, attached to the new sessions. On an error, watch
-// connects again.
 func (st *store) restartServer() {
 	next, err := st.askRestart()
 	if err != nil {
@@ -1232,22 +1226,23 @@ func (st *store) secondInstance() {
 	st.reopen()
 }
 
-// newWindow makes the window of a workspace; tests make none.
-var newWindow = func(a *App) *mygo.Window {
+// baseWindowOptions builds GoRex's standard hidden-titlebar, glass-backed
+// window options shared by workspace and settings windows.
+func baseWindowOptions(title, stateKey string, width, height, minW, minH int, trafficLight mygo.Point, viewFn func(*ui.Context)) mygo.WindowOptions {
 	opts := mygo.WindowOptions{
-		Title:                "GoRex",
-		Width:                1000,
-		Height:               620,
-		MinWidth:             560,
-		MinHeight:            340,
-		StateKey:             stateKey(a.slot),
+		Title:                title,
+		Width:                width,
+		Height:               height,
+		MinWidth:             minW,
+		MinHeight:            minH,
+		StateKey:             stateKey,
 		TitleBarStyle:        mygo.TitleBarHidden,
 		CornerRadius:         windowCorner,
-		TrafficLightPosition: &mygo.Point{X: 16, Y: 15},
+		TrafficLightPosition: &trafficLight,
 		BackgroundColor:      "light-dark(#efe1e6, #231e27)",
 		Vibrancy:             glassVibrancy(),
 		Transparent:          glassTransparent(),
-		Content:              ui.View(a.view),
+		Content:              ui.View(viewFn),
 		// A click that brings the window to the front only does that; see
 		// DESIGN.md, Decisions.
 		ConsumeActivationClick: true,
@@ -1257,13 +1252,24 @@ var newWindow = func(a *App) *mygo.Window {
 		// hidden title bar keeps the window's top edge, which resizes it.
 		opts.HideWindowButtons = true
 	}
-	return mygo.NewWindow(opts)
+	return opts
+}
+
+// newWindow overrides window creation in headless tests; nil creates a real
+// native window via baseWindowOptions.
+var newWindow func(a *App) *mygo.Window
+
+func createWorkspaceWindow(a *App) *mygo.Window {
+	if newWindow != nil {
+		return newWindow(a)
+	}
+	return mygo.NewWindow(baseWindowOptions("GoRex", stateKey(a.slot), 1000, 620, 560, 340, mygo.Point{X: 16, Y: 15}, a.view))
 }
 
 // openWindow opens a window that shows w.
 func (st *store) openWindow(w *Workspace) *App {
 	a := &App{st: st, client: st.client, hello: st.hello, errMsg: st.errMsg, slot: st.freeSlot(), keys: newKeyDispatcher()}
-	a.win = newWindow(a)
+	a.win = createWorkspaceWindow(a)
 	if err := a.loadLuaConfig(); err != nil {
 		a.err = err.Error()
 	}
@@ -1411,7 +1417,7 @@ func (a *App) leave() []*Tab {
 		w.app = nil
 	}
 	a.ws, a.tabs, a.active, a.focusReq, a.renaming = nil, nil, 0, nil, nil
-	a.wsOpen, a.wsRenaming, a.wsConfirm = false, false, false
+	a.wsRenaming, a.wsConfirm = false, false
 	a.paneRenaming, a.paneNameFocus = nil, false
 	return tabs
 }

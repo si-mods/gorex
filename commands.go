@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -171,6 +172,18 @@ func (cmd *command) invoke(a *App, args map[string]any) error {
 	return nil
 }
 
+var appCommandsOnce sync.Once
+
+// bindAppCommands wires the window/settings/server actions whose targets would
+// otherwise form a static initialization cycle through the command table.
+func bindAppCommands() {
+	appCommandsOnce.Do(func() {
+		cmdSettings.Run = func(a *App) { a.openSettings() }
+		cmdRestartServer.Run = func(a *App) { a.st.restartServer() }
+		cmdNewWindow.Run = func(a *App) { a.newWindowCmd() }
+	})
+}
+
 // hostAway is the host the action needs that is not connected, nil when
 // it can run.
 func (cmd *command) hostAway(a *App) *hostConn {
@@ -214,7 +227,7 @@ func tabHost(a *App) *hostConn {
 }
 
 // commandsByID is every built-in action by its ID, made from commands at start.
-var commandsByID = map[string]*command{}
+var commandsByID = initCommandsByID()
 
 // newCustomCommands builds the actions of cfg without registering them.
 func newCustomCommands(cfg *config.Config) ([]*command, error) {
@@ -240,8 +253,8 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 			// (docs/MOD-009-client-prompts.md).
 			Custom: true,
 			RunArgs: func(app *App, args map[string]any) error {
-				clock, ctx := newActionClock(actionLimit)
-				defer clock.stop()
+				clock, ctx := config.NewActionClock(actionLimit)
+				defer clock.Stop()
 				cfg.SetInvoke(func(id string, args map[string]any) error {
 					if blockedFromClient(id) {
 						return fmt.Errorf("%s is not allowed from an action", id)
@@ -262,12 +275,12 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 				})
 				cfg.SetUI(func(opts config.UIOptions) (config.UIAnswer, error) {
 					// The question's time does not count.
-					clock.pause()
-					defer clock.resume()
+					clock.Pause()
+					defer clock.Resume()
 					return app.askUI(ca.Name, opts)
 				})
 				err := cfg.InvokeWithin(ctx, ca.Name, map[string]any{"origin": "action"}, args)
-				if err != nil && clock.expiredTime() {
+				if err != nil && clock.Expired() {
 					return fmt.Errorf("%s did not finish in %s", ca.Name, actionLimit)
 				}
 				return err
@@ -717,29 +730,27 @@ var sessionCommands = []*command{
 	&cmdRenameSession, &cmdRevealFolder, &cmdCloseSession,
 }
 
-// commands are all of them.
-var commands = append(slices.Clone(paletteCommands), &cmdPalette, &cmdPalette2, &cmdClear, &cmdModeEnter, &cmdModeExit, &cmdModeExitAll, &cmdPaneRatio)
+// commands are all of them, with non-macOS shortcuts applied at initialization.
+var commands = func() []*command {
+	list := append(slices.Clone(paletteCommands), &cmdPalette, &cmdPalette2, &cmdClear, &cmdModeEnter, &cmdModeExit, &cmdModeExitAll, &cmdPaneRatio)
+	if runtime.GOOS != "darwin" {
+		for _, cmd := range list {
+			cmd.Accel, cmd.Keys = "", ""
+			if cmd.Other != (shortcut{}) {
+				cmd.Accel = cmd.Other.String()
+				cmd.Keys = cmd.Accel
+			}
+		}
+	}
+	return list
+}()
 
-func init() {
+func initCommandsByID() map[string]*command {
+	m := make(map[string]*command, len(commands))
 	for _, cmd := range commands {
-		if cmd.ID == "" {
-			panic("gorex: command without an ID: " + cmd.English())
-		}
-		if _, ok := commandsByID[cmd.ID]; ok {
-			panic("gorex: duplicate command ID: " + cmd.ID)
-		}
-		commandsByID[cmd.ID] = cmd
+		m[cmd.ID] = cmd
 	}
-	if runtime.GOOS == "darwin" {
-		return
-	}
-	for _, cmd := range commands {
-		cmd.Accel, cmd.Keys = "", ""
-		if cmd.Other != (shortcut{}) {
-			cmd.Accel = cmd.Other.String()
-			cmd.Keys = cmd.Accel
-		}
-	}
+	return m
 }
 
 // overrides reports that a keymap binding took this command's menu

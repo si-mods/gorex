@@ -2,7 +2,6 @@ package main
 
 import (
 	"math"
-	"strings"
 	"sync"
 
 	"github.com/egoist/mygo/ui"
@@ -22,14 +21,11 @@ func spaceColorHex(c string) (string, bool) {
 	if len(c) != 7 || c[0] != '#' {
 		return "", false
 	}
-	for _, r := range c[1:] {
-		switch {
-		case '0' <= r && r <= '9', 'a' <= r && r <= 'f', 'A' <= r && r <= 'F':
-		default:
-			return "", false
-		}
+	h, ok := layout.NormalizeHex6(c[1:])
+	if !ok {
+		return "", false
 	}
-	return strings.ToLower(c), true
+	return "#" + h, true
 }
 
 // spaceColors are the colors of a window showing a space of color from

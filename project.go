@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"log"
 	"os"
-	"runtime"
 	"strings"
 
 	"gorex/internal/rex"
@@ -175,6 +174,3 @@ func (a *App) openNewProject() { a.openSheet(nil, "") }
 
 // openNewProjectOn opens the New Project sheet on host h.
 func (a *App) openNewProjectOn(h *hostConn) { a.openSheet(h, "") }
-
-// localWindows tells whether this machine runs Windows.
-var localWindows = runtime.GOOS == "windows"

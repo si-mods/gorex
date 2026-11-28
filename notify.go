@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -141,17 +142,22 @@ func tileImage(prog program) []byte {
 		return nil
 	}
 	key := tileKey{prog.Glyph, prog.TileGlyph, prog.TileBg, prog.TileFg, prog.TileBgGradient, prog.TileBorder, programIconKey(prog.Icon)}
-	if b, ok := tileImages[key]; ok {
+	tileImagesMu.Lock()
+	b, ok := tileImages[key]
+	tileImagesMu.Unlock()
+	if ok {
 		return b
 	}
-	b := drawTileImage(prog)
+	b = drawTileImage(prog)
 	if b == nil {
 		return nil
 	}
+	tileImagesMu.Lock()
 	if len(tileImages) >= 512 {
 		clear(tileImages)
 	}
 	tileImages[key] = b
+	tileImagesMu.Unlock()
 	return b
 }
 
@@ -190,7 +196,10 @@ type tileKey struct {
 }
 
 // tileImages are the PNGs of tileImage, 512 at most.
-var tileImages = map[tileKey][]byte{}
+var (
+	tileImagesMu sync.Mutex
+	tileImages   = map[tileKey][]byte{}
+)
 
 // appearanceDark tells whether the app shows its dark appearance; tests,
 // which run no app, take its place.

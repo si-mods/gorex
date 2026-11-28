@@ -62,6 +62,9 @@ func TestActionRegistry(t *testing.T) {
 			t.Errorf("%s has no ID", cmd.English())
 			continue
 		}
+		if cmd.Run == nil && cmd.RunArgs == nil {
+			t.Errorf("%s has neither Run nor RunArgs", cmd.ID)
+		}
 		if cmd.ID != strings.ToLower(cmd.ID) || strings.Contains(cmd.ID, " ") {
 			t.Errorf("ID %q is not lower-case and without spaces", cmd.ID)
 		}
@@ -161,6 +164,7 @@ func TestImportRexCommand(t *testing.T) {
 // left behind on Windows only, and never for a client, as it ends the
 // programs in the panes.
 func TestRestartServerCommand(t *testing.T) {
+	bindAppCommands()
 	if !blockedFromClient(cmdRestartServer.ID) {
 		t.Error("a client may restart the server")
 	}

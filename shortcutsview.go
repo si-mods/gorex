@@ -57,32 +57,38 @@ var recordMods = func() []ui.Modifiers {
 	return out
 }()
 
-// rebuildMenu is set by init: the menu must be rebuilt without
-// accelerators while the keyboard records, and init avoids an
-// initialization cycle with newWindow.
+// rebuildMenu and reloadConfig are optional test hooks; nil uses the real menu
+// and Lua config reload paths without package-level initialization cycles.
 var (
 	rebuildMenu  func(*store)
 	reloadConfig func(*App)
 )
 
-func init() {
-	rebuildMenu = func(st *store) {
-		if st.recording {
-			mygo.App.SetMenu(mygo.NewMenu(nil))
-			return
-		}
-		mygo.App.SetMenu(st.menu())
+func doRebuildMenu(st *store) {
+	if rebuildMenu != nil {
+		rebuildMenu(st)
+		return
 	}
-	reloadConfig = func(a *App) {
-		a.reloadLuaConfig()
+	if st.recording {
+		mygo.App.SetMenu(mygo.NewMenu(nil))
+		return
 	}
+	mygo.App.SetMenu(st.menu())
+}
+
+func doReloadConfig(a *App) {
+	if reloadConfig != nil {
+		reloadConfig(a)
+		return
+	}
+	a.reloadLuaConfig()
 }
 
 func (a *App) startRecording(cmd *command) {
 	shortcutsUI.recording, shortcutsUI.err = cmd, ""
 	if a.st != nil {
 		a.st.recording = true
-		rebuildMenu(a.st)
+		doRebuildMenu(a.st)
 	}
 }
 
@@ -90,7 +96,7 @@ func (a *App) stopRecording() {
 	shortcutsUI.recording = nil
 	if a.st != nil {
 		a.st.recording = false
-		rebuildMenu(a.st)
+		doRebuildMenu(a.st)
 	}
 }
 
@@ -126,7 +132,7 @@ func (a *App) recordShortcut(c *ui.Context) {
 				return
 			}
 			a.stopRecording()
-			reloadConfig(a)
+			doReloadConfig(a)
 			return
 		}
 	}
@@ -179,7 +185,7 @@ func (a *App) resetShortcut(cmd *command) {
 		settingsToastError(locales.ToastShortcutResetFailed(reasonOf(err)))
 		return
 	}
-	reloadConfig(a)
+	doReloadConfig(a)
 }
 
 func (a *App) resetAllShortcuts() {
@@ -187,7 +193,7 @@ func (a *App) resetAllShortcuts() {
 		settingsToastError(locales.ToastShortcutsResetFailed(reasonOf(err)))
 		return
 	}
-	reloadConfig(a)
+	doReloadConfig(a)
 }
 
 // resetAllButton is the keyboard section's reset.

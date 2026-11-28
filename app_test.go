@@ -57,6 +57,7 @@ var testBadge atomic.Int64
 // view runs without a window.
 func newTestApp(t *testing.T) (*App, *ui.Tester) {
 	t.Helper()
+	bindAppCommands()
 	testPresent.Store(true)
 	oldPresent := userPresent
 	userPresent = testPresent.Load

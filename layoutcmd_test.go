@@ -19,6 +19,12 @@ import (
 	"gorex/internal/rex"
 )
 
+func (o *outbox) revision() uint64 {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.rev
+}
+
 // TestCommandLayout changes the window's layout from a client, through
 // the server and the app's own code: new tabs, splits, zoom, closing,
 // renaming and moving.
