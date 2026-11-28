@@ -77,15 +77,14 @@ final class AgentHighlightUITests: XCTestCase {
     private func expandGoRexProject(_ app: XCUIApplication) {
         if app.buttons["BackButton"].exists {
             app.buttons["BackButton"].tap()
+        } else if app.navigationBars.buttons["Back"].exists {
+            app.navigationBars.buttons["Back"].tap()
         }
-        let shellRow = app.buttons["Shell"]
-        _ = shellRow.waitForExistence(timeout: 15)
-        let claudeRow = app.scrollViews.buttons.matching(NSPredicate(format: "label CONTAINS 'Claude Code'")).firstMatch
-        if !claudeRow.waitForExistence(timeout: 3) {
-            let project = app.scrollViews.buttons.matching(NSPredicate(format: "label == 'GoRex'")).firstMatch
-            if project.waitForExistence(timeout: 10) {
-                project.tap()
-            }
+        let project = app.scrollViews.buttons.matching(NSPredicate(format: "label == 'GoRex'")).firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 15))
+        let claudeRow = app.scrollViews.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Claude Code'")).firstMatch
+        if !claudeRow.waitForExistence(timeout: 8) {
+            project.tap()
         }
         XCTAssertTrue(claudeRow.waitForExistence(timeout: 10))
     }
@@ -103,8 +102,8 @@ final class AgentHighlightUITests: XCTestCase {
         expandGoRexProject(app)
 
         // 1. Agent-driven rows expose the VoiceOver agent label, while human rows do not.
-        let claudeRow = app.scrollViews.buttons.matching(NSPredicate(format: "label CONTAINS 'Claude Code'")).firstMatch
-        let dashboardRow = app.scrollViews.buttons.matching(NSPredicate(format: "label CONTAINS 'Dashboard'")).firstMatch
+        let claudeRow = app.scrollViews.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Claude Code'")).firstMatch
+        let dashboardRow = app.scrollViews.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Dashboard'")).firstMatch
         let shellRow = app.scrollViews.buttons["Shell"]
         XCTAssertTrue(claudeRow.exists)
         XCTAssertTrue(dashboardRow.exists)
@@ -155,7 +154,7 @@ final class AgentHighlightUITests: XCTestCase {
         let app = try launchDemo(scheme: "dark", theme: "Gruvbox Dark", reduceMotion: true, agentHighlight: true)
         expandGoRexProject(app)
 
-        let claudeRow = app.scrollViews.buttons.matching(NSPredicate(format: "label CONTAINS 'Claude Code'")).firstMatch
+        let claudeRow = app.scrollViews.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Claude Code'")).firstMatch
         XCTAssertTrue(claudeRow.waitForExistence(timeout: 10))
         claudeRow.tap()
 
@@ -184,7 +183,7 @@ final class AgentHighlightUITests: XCTestCase {
         let lightApp = try launchDemo(scheme: "light", theme: "Gruvbox Light", reduceMotion: true, agentHighlight: true)
         expandGoRexProject(lightApp)
         saveShot("\(prefix)-light-list-after")
-        lightApp.scrollViews.buttons.matching(NSPredicate(format: "label CONTAINS 'Claude Code'")).firstMatch.tap()
+        lightApp.scrollViews.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Claude Code'")).firstMatch.tap()
         let lightTermShown = lightApp.textViews.matching(NSPredicate(format: "label CONTAINS 'operated by an agent' OR label CONTAINS '由 agent 操作'")).firstMatch.waitForExistence(timeout: 15)
         XCTAssertTrue(lightTermShown)
         saveShot("\(prefix)-light-pane-after")
