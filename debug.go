@@ -23,9 +23,6 @@ import (
 // lines name, by default the one focused last; "shot" captures the window
 // into shot.png. It runs once for the app, from its first window, a.
 func (st *store) debugHook(a *App) {
-	if os.Getenv("GOREX_OPEN_SETTINGS") == "1" {
-		a.openSettings()
-	}
 	dir := os.Getenv("GOREX_DEBUG")
 	if dir == "" {
 		return

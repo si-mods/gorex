@@ -36,9 +36,6 @@ type savedHost = hosts.Host
 // label is the name the host shows by: its alias, else its name.
 func (h *hostConn) label() string { return h.savedHost.Label() }
 
-// hostsPath is the app's hosts.json, which the CLI and the server read.
-func hostsPath() string { return hosts.Path(rex.Dir()) }
-
 // loadHosts reads the saved hosts; none when the file does not exist. A
 // file that does not parse is moved aside, not lost: its addresses are
 // secrets that cannot be had again but from each host.
@@ -986,13 +983,6 @@ func newLocalStream(c *rex.Client, sid string, cols, rows int) *paneStream {
 	s := &paneStream{client: func() *rex.Client { return c }, name: "local", sid: sid, cols: cols, rows: rows, made: time.Now(), asked: make(chan struct{})}
 	go s.watch()
 	return s
-}
-
-// Detached tells that the stream was lost and is not back yet.
-func (s *paneStream) Detached() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.detached
 }
 
 // DetachedFor tells how long the stream has been lost, zero while it is

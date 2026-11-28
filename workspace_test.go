@@ -17,8 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/egoist/mygo/ui"
-
 	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
@@ -404,7 +402,7 @@ func TestSpaceColorShots(t *testing.T) {
 	os.MkdirAll(dir, 0o755)
 	for _, dark := range []bool{false, true} {
 		tt.SetDark(dark)
-		a.wsOpen = true
+		a.pickerOpen = true
 		for range 3 {
 			tt.Frame()
 		}
@@ -416,109 +414,8 @@ func TestSpaceColorShots(t *testing.T) {
 		png.Encode(f, tt.Image())
 		f.Close()
 	}
-	a.wsOpen = false
+	a.pickerOpen = false
 	quit(a.st)
-}
-
-// saveShot writes img as name in dir, magnified by scale when it is not
-// 1 and cropped to r when r is not empty.
-func saveShot(t *testing.T, dir, name string, img *image.RGBA, r image.Rectangle, scale int) {
-	t.Helper()
-	if r.Empty() {
-		r = img.Bounds()
-	}
-	dst := image.NewRGBA(image.Rect(0, 0, r.Dx()*scale, r.Dy()*scale))
-	for y := range r.Dy() * scale {
-		for x := range r.Dx() * scale {
-			dst.Set(x, y, img.At(r.Min.X+x/scale, r.Min.Y+y/scale))
-		}
-	}
-	f, err := os.Create(filepath.Join(dir, name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	if err := png.Encode(f, dst); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// TestColorPickerShots renders the space popover's colors in the sidebar,
-// whole and magnified, light and dark, into GOREX_SHOTS, to look at: the
-// panel must be opaque behind the color label, the swatches and the
-// field, whichever tab titles sit under it.
-func TestColorPickerShots(t *testing.T) {
-	dir := os.Getenv("GOREX_SHOTS")
-	if dir == "" {
-		t.Skip("GOREX_SHOTS names no directory")
-	}
-	a, tt := newTestApp(t)
-	old := prefs
-	t.Cleanup(func() { prefs = old })
-	prefs = settings{TabPlacement: "left"}
-	st := a.st
-	a.ws.Name = "icy-ridge"
-	for _, name := range []string{
-		`pwsh C:\Users\yibo\repos\gorex`,
-		`vim src/workspaceview.go`,
-		`ssh studio -t tail -f build.log`,
-	} {
-		a.newTab(os.TempDir()).Name = name
-	}
-	os.MkdirAll(dir, 0o755)
-	for _, dark := range []bool{false, true} {
-		theme := map[bool]string{false: "light", true: "dark"}[dark]
-		tt.SetDark(dark)
-		a.wsOpen = true
-		for range 3 {
-			tt.Frame()
-		}
-		img := tt.Image()
-		saveShot(t, dir, fmt.Sprintf("color-picker-%s.png", theme), img, image.Rectangle{}, 1)
-		label, ok := tt.Find(locales.SpaceColor())
-		if !ok {
-			t.Fatalf("no color section; texts %q", tt.Texts())
-		}
-		saveShot(t, dir, fmt.Sprintf("color-picker-%s-colors.png", theme), img,
-			image.Rect(int(label.X)-10, int(label.Y)-8, int(label.X)+272, int(label.Y)+92), 2)
-		// The fields with the focus: the popover's custom color, and the
-		// space's name, both outlined in the space's accent.
-		swatch, ok := tt.Find("Default")
-		if !ok {
-			t.Fatalf("no color swatches; texts %q", tt.Texts())
-		}
-		field := ui.Rect{X: label.X, Y: swatch.Y + swatch.H + 6, W: 254, H: 28}
-		for _, c := range []string{"green", "pink"} {
-			a.ws.Color = c
-			for range 3 {
-				tt.Frame()
-			}
-			tt.ClickAt(field.X+field.W/2, field.Y+field.H/2)
-			for range 3 {
-				tt.Frame()
-			}
-			saveShot(t, dir, fmt.Sprintf("focus-color-%s-%s.png", c, theme), tt.Image(),
-				image.Rect(int(field.X)-8, int(field.Y)-8, int(field.X+field.W)+8, int(field.Y+field.H)+8), 3)
-			a.wsRenaming, a.wsRenameText, a.wsRenameFocus = true, a.ws.Name, false
-			for range 3 {
-				tt.Frame()
-			}
-			tt.Key(ui.Cmd, ui.KeyA)
-			for range 3 {
-				tt.Frame()
-			}
-			chip, ok := tt.Find(locales.SessionLabel(a.ws.Name))
-			if !ok {
-				t.Fatalf("no session chip; texts %q", tt.Texts())
-			}
-			saveShot(t, dir, fmt.Sprintf("focus-rename-%s-%s.png", c, theme), tt.Image(),
-				image.Rect(int(chip.X)-6, int(chip.Y)-6, int(chip.X)+214, int(chip.Y+chip.H)+6), 4)
-			a.wsRenaming = false
-		}
-		a.ws.Color = ""
-		a.wsOpen = false
-	}
-	quit(st)
 }
 
 // TestSpaceStripShots renders the sidebar's strip of four colored spaces,
@@ -652,7 +549,7 @@ func TestSessionShots(t *testing.T) {
 		for _, dark := range []bool{false, true} {
 			prefs = settings{TabPlacement: place}
 			tt.SetDark(dark)
-			a.wsOpen = true
+			a.pickerOpen = true
 			for range 3 {
 				tt.Frame()
 			}
@@ -665,7 +562,7 @@ func TestSessionShots(t *testing.T) {
 			f.Close()
 		}
 	}
-	a.wsOpen = false
+	a.pickerOpen = false
 	a.askCloseWorkspace()
 	tt.Frame()
 	f, _ := os.Create(filepath.Join(dir, "sessions-close-dark.png"))

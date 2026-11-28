@@ -620,7 +620,7 @@ func TestProjectSheetSubmitState(t *testing.T) {
 		t.Fatalf("a folder: canSubmit %v willCreate %v", a.sheet.canSubmit(), a.sheet.willCreate())
 	}
 
-	if localWindows {
+	if runtime.GOOS == "windows" {
 		a.sheet.browse(rex.DirTop)
 		waitFor(t, tt, "the drives", func() bool { return !a.sheet.loading && a.sheet.asked && a.sheet.res.Path == rex.DirTop })
 		tt.Frame()

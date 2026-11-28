@@ -138,23 +138,11 @@ type App struct {
 	focusPresent bool
 	focusSampled time.Time
 
-	// The workspace's popover, the field that renames it, Close
-	// Session's question.
-	wsOpen     bool
-	wsRenaming bool
-	// wsColorOnly keeps the popover to the space's colors, as the host
-	// view's Color… opens it.
-	wsColorOnly   bool
+	// The field that renames the workspace and Close Session's question.
+	wsRenaming    bool
 	wsRenameText  string
 	wsRenameFocus bool
-	// wsColorText is the color the popover's custom field holds.
-	wsColorText string
-	wsConfirm   bool
-	// wsShown tells that the open popover scrolled the window's project
-	// into view; stripShown is the project the sidebar's strip last
-	// scrolled into view.
-	wsShown    bool
-	stripShown *Workspace
+	wsConfirm     bool
 	// teleportAsk is the question after a tab was dropped on another
 	// host's place in the tabs.
 	teleportAsk teleportAsk
@@ -169,13 +157,9 @@ type App struct {
 	// shows it first poses it where it comes in from.
 	paletteFresh bool
 
-	// The sidebar: the tab last scrolled into view, the tab last chosen
-	// on each host by hostKey, the sessions under each host the host view
-	// opened or closed, by spaceKey (spaceIsOpen), and a drag of its edge,
+	// The sidebar: the tab last scrolled into view, and a drag of its edge
 	// from the width it began at.
 	revealed  *Tab
-	chosenOn  map[string]*Tab
-	spaceOpen map[string]bool
 	edgeDrag  bool
 	edgeFrom  float32
 	edgeMoved float32

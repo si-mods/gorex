@@ -8,11 +8,6 @@ import (
 	"gorex/locales"
 )
 
-// Run is set here: they open windows, whose debug hook lists the commands.
-func init() {
-	cmdNewWindow.Run = func(a *App) { a.newWindowCmd() }
-}
-
 // workspaceRenameField renames the workspace in place, as tabs are: Enter
 // or moving the focus away keeps the name, Escape goes back.
 func (a *App) workspaceRenameField(c *ui.Context, k *colors, name string) {
@@ -43,7 +38,7 @@ func (a *App) startWorkspaceRename() {
 	// The tabs with no project have no name to change: layout.RepairHostPanes
 	// finds them by it.
 	if a.ws != nil && a.ws.Dir != "" {
-		a.wsOpen, a.wsRenaming, a.wsRenameText, a.wsRenameFocus = false, true, a.ws.Name, false
+		a.wsRenaming, a.wsRenameText, a.wsRenameFocus = true, a.ws.Name, false
 		a.focusReq = nil // the field takes the focus
 	}
 }
@@ -51,7 +46,7 @@ func (a *App) startWorkspaceRename() {
 // askCloseWorkspace asks before closing the workspace.
 func (a *App) askCloseWorkspace() {
 	if a.ws != nil {
-		a.wsOpen, a.wsConfirm = false, true
+		a.wsConfirm = true
 		a.focusReq = nil
 	}
 }

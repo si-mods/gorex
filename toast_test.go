@@ -22,6 +22,8 @@ func toastPrefs(t *testing.T) {
 	prefs.Animation = "off"
 }
 
+func (a *App) toastText() string { return a.toast.text() }
+
 // TestToastLife: a toast shows 5 s, longer for a long text.
 func TestToastLife(t *testing.T) {
 	long := strings.Repeat("x", 150)

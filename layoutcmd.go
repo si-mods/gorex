@@ -602,13 +602,6 @@ func tabRevs(raw []byte) map[string]uint64 {
 	return out
 }
 
-// revision is the revision of the layout the app shows.
-func (o *outbox) revision() uint64 {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	return o.rev
-}
-
 // wait waits until the server answered what was sent, for d at most: it
 // needs no main thread, which may be the one waiting, as a window that
 // closes saves.
