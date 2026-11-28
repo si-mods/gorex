@@ -96,60 +96,78 @@ func TestStatusQueryBeforeDA1(t *testing.T) {
 
 // TestStatusSeenOp checks that "seeStatus" raises the session's seen,
 // which the list and an event carry, and that seeing it again is no news.
+// The session prints nothing, and the test gives it its record, so that
+// nothing else tells of a change on its own: neither its output (and the
+// sampler it asks) nor the notify of a record the list already shows
+// (#1160). Each step reads the events up to a fence, so none from before
+// is still on its way.
 func TestStatusSeenOp(t *testing.T) {
 	s, _ := testServer(t)
 	c := pipe(s, "")
 	defer c.Close()
-	if err := c.Subscribe(); err != nil {
+	if err := c.SubscribeTransfers(); err != nil {
 		t.Fatal(err)
 	}
-	in, err := c.Create(CreateOptions{Command: []string{"/bin/sh", "-c", `printf '\033]7501;state=done\007'; sleep 60`}, Dir: "/tmp", Cols: 80, Rows: 24})
+	in, err := c.Create(CreateOptions{Command: []string{"sleep", "60"}, Dir: "/tmp", Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var done ProgramStatus
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		if got := sessionInfo(t, c, in.ID); len(got.Statuses) == 1 {
-			done = got.Statuses[0]
-			if !got.StatusSeen.IsZero() {
-				t.Fatalf("seen %v before any client saw it", got.StatusSeen)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("no status record")
-		}
+	ss := must(s.session(in.ID))
+	ss.mu.Lock()
+	ss.status.feed([]byte("\x1b]7501;state=done\x07"))
+	ss.mu.Unlock()
+	got := sessionInfo(t, c, in.ID)
+	if len(got.Statuses) != 1 || !got.StatusSeen.IsZero() {
+		t.Fatalf("statuses %+v, seen %v before any client saw them", got.Statuses, got.StatusSeen)
 	}
-	for len(c.Events()) > 0 {
-		<-c.Events()
-	}
+	done := got.Statuses[0]
+	fence(t, s, c)
+
 	if err := c.SeeStatus(in.ID, done.Updated); err != nil {
 		t.Fatal(err)
 	}
 	if got := sessionInfo(t, c, in.ID); !got.StatusSeen.Equal(done.Updated) || MostUrgent(got.Statuses, got.StatusSeen) != nil {
 		t.Fatalf("seen %v, want %v", got.StatusSeen, done.Updated)
 	}
-	for deadline := time.After(3 * time.Second); ; {
-		select {
-		case ev := <-c.Events():
-			i := slices.IndexFunc(ev.Sessions, func(es EventSession) bool { return es.ID == in.ID })
-			if ev.Kind != "sessions" || i < 0 || !ev.Sessions[i].StatusSeen.Equal(done.Updated) {
-				continue // one sent before
-			}
-		case <-deadline:
-			t.Fatal("no event of the seen record")
-		}
-		break
+	told := slices.ContainsFunc(fence(t, s, c), func(ev Event) bool {
+		i := slices.IndexFunc(ev.Sessions, func(es EventSession) bool { return es.ID == in.ID })
+		return ev.Kind == "sessions" && i >= 0 && ev.Sessions[i].StatusSeen.Equal(done.Updated)
+	})
+	if !told {
+		t.Fatal("no event of the seen record")
 	}
+
 	if err := c.SeeStatus(in.ID, done.Updated.Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case ev := <-c.Events():
-		t.Fatalf("an event for no news: %+v", ev)
-	case <-time.After(300 * time.Millisecond):
+	for _, ev := range fence(t, s, c) {
+		if ev.Kind == "sessions" {
+			t.Fatalf("an event for no news: %+v", ev)
+		}
 	}
 	if err := c.SeeStatus("nope", done.Updated); err == nil {
 		t.Error("seeing a session the server lacks succeeded")
+	}
+}
+
+// fence returns the events c, which subscribed to the transfers, reads
+// before a transfer event of its own: the server writes a subscriber's
+// events in the order of their changes, a burst's transfers last, so
+// none of the changes before the fence is still on its way after it.
+func fence(t *testing.T, s *Server, c *Client) []Event {
+	t.Helper()
+	id := newID()
+	s.transferred(Transfer{ID: id, SID: "fence", Direction: "put", State: "done"})
+	var evs []Event
+	for deadline := time.After(5 * time.Second); ; {
+		select {
+		case ev := <-c.Events():
+			if ev.Kind == "transfer" && ev.Transfer != nil && ev.Transfer.ID == id {
+				return evs
+			}
+			evs = append(evs, ev)
+		case <-deadline:
+			t.Fatal("no fence")
+		}
 	}
 }
