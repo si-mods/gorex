@@ -3,7 +3,9 @@ name: Maintenance
 # The whole-repo audit that no pull request triggers, because the rot it
 # finds was merged earlier: dead code that no target reaches. Run by hand
 # with `go run ./tools/verify -audit`; docs/maintenance.md lists the checks
-# that need a reader.
+# that need a reader. The CI health report (tools/cistats) is a step of this
+# job, not a job: every instabox job that runs is one sandbox start
+# (docs/REF-015-ci.md).
 on:
   schedule:
     - cron: "17 3 * * 1"
@@ -11,6 +13,8 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  issues: write
 
 jobs:
   audit:
@@ -25,3 +29,11 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: go run ./tools/verify -audit
+      # Posts to the issue in vars.CI_HEALTH_ISSUE; without it, the log. Runs
+      # when the audit fails too.
+      - name: ci health
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_HEALTH_ISSUE: ${{ vars.CI_HEALTH_ISSUE }}
+        run: go run ./tools/cistats -days 7 -repo "$GITHUB_REPOSITORY" ${CI_HEALTH_ISSUE:+-issue "$CI_HEALTH_ISSUE"}
