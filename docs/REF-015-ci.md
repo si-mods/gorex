@@ -39,7 +39,7 @@ Every workflow in `.github/workflows` is in this table. "instabox" means one san
 | `release.yml` | `draft` | self-hosted Mac runner, or the Windows runner for a Windows-only release | Manual, on main. |
 | `release.yml` | `unix` | self-hosted Mac runner | Manual, on main. |
 | `release.yml` | `windows` | self-hosted Windows runner | Manual, on main. |
-| `release.yml` | `checksums` | `instabox-medium` | After `unix` and `windows` succeed. |
+| `release.yml` | `checksums` | `instabox-medium` | On main, when at least one of `unix` and `windows` succeeded and none failed or was cancelled. A skipped one does not block it. |
 | `release.yml` | `web-r2` | `instabox-medium` | Manual, on main, target `all` or `web`. |
 | `ios-test.yml` | `test` | self-hosted Mac runner (`gorex-testflight`) | Manual. |
 | `delete-shots.yml` | `delete` | self-hosted Mac runner | A merged pull request. |
@@ -50,7 +50,7 @@ Every workflow in `.github/workflows` is in this table. "instabox" means one san
 
 Add a step to `linux`. Do not add a job. A new instabox job names its expected starts a day in the PR. See [A new job on instabox](lessons.md#a-new-job-on-instabox).
 
-Every step after `plan` has `if: ${{ !cancelled() }}` in its condition. One failure does not hide the other failures. Each failed step fails the job.
+`plan` has no condition. The `what-to-test` step has only `github.event_name == 'pull_request'`. The checks after it have the `plan` output in their condition and, when they must run after a failure, `!cancelled()`. Read `ci.yml` for each condition. One failure does not hide the other failures, and each failed step fails the job.
 
 The Windows tests run on a self-hosted Windows runner. They use no start. The Mac mini's runners build iOS and releases, and no CI job waits for them.
 
@@ -103,6 +103,7 @@ These cases run all the checks:
 | Docs only (#1233) | Nothing. The paths filter starts no run. |
 | `internal/rex` (#1212) | vet and lint on the package and its importers, the cross-build, the root package, and 10 other packages. |
 | `web/src` (#1058) | The web typecheck and tests, and `TestNoExcuseComments`. On a push to main, `web-r2` also runs. |
+| Docs, `tools/cistats` and `maintenance.yml` (#1267) | vet and lint on `./tools/cistats`, tests of `./tools/ciplan` and `./tools/cistats`, and `TestNoExcuseComments` and `TestWorkflowsTargetFork` in the root package. No web. `linux` took 4 minutes (237 s) and `test-windows` 32 s. A full run takes 15 to 27 minutes. |
 
 ## Rules for authors
 
@@ -120,7 +121,7 @@ These cases run all the checks:
 go run ./tools/cistats -days 7 -repo si-mods/gorex
 ```
 
-The `audit` job of `maintenance.yml` runs it every Monday after the audit, with `-days 7`. This adds no start, because the job already runs. If the repository variable `CI_HEALTH_ISSUE` holds an issue number, the report is posted as a comment on that issue. If not, the report is in the job log. The step runs even when the audit fails.
+The `audit` job of `maintenance.yml` runs it every Monday after the audit, with `-days 7`. The window is the 7 whole UTC days before today, today excluded. A Monday run covers Monday to Sunday of the week before, and every count is final. This adds no start, because the job already runs. If the repository variable `CI_HEALTH_ISSUE` holds an issue number, the report is posted as a comment on that issue. If not, the report is in the job log. The step runs even when the audit fails.
 
 The report is in Markdown and has these parts:
 
@@ -131,7 +132,9 @@ The report is in Markdown and has these parts:
 - **Steps of the CI `linux` job**: how often each step ran and how often it was skipped. This shows how selective `tools/ciplan` is.
 - **Failure rate** of the `linux` job.
 
-A start is a job with an `instabox*` label that was not skipped and got a runner. The tool counts starts by the `started_at` time of the job. It lists runs one day at a time, because the API returns at most 1000 results for a query. A 403 or 429 answer stops the tool with an error.
+A start is a job with an `instabox*` label that was not skipped and got a runner. The tool counts starts by the `started_at` time of the job. It lists runs one day at a time, starting one day before the window, because a run that was created before the window can start jobs in it. The API returns at most 1000 results for a query. If a day returns 1000, the tool lists that day again as two 12-hour ranges. If a half is still full, the tool stops with an error that names the day. Jobs are unique by id, because a re-run lists a job once for each attempt.
+
+A week holds about 1900 runs, and each run needs one jobs call. `GITHUB_TOKEN` allows 1000 requests an hour. The tool reads `X-RateLimit-Remaining` and `X-RateLimit-Reset` on every answer. With fewer than 20 requests left, it logs `rate limit: waiting until <time>` and sleeps until the reset time plus 5 seconds. One wait is at most 65 minutes; a longer wait is an error. A 403 or 429 answer with no requests left waits once and sends the request again. Any other 403 stops the tool with an error. The `audit` job has `timeout-minutes: 90` so that a full wait fits. Workflow and job names in the report are in backticks, so a name cannot make a mention or break a table.
 
 | Flag | Threshold | Allowance |
 | --- | --- | --- |

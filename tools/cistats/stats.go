@@ -171,6 +171,13 @@ func dur(d time.Duration) string {
 	return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
 }
 
+// code makes a name safe in Markdown: no backtick can end the code span, no
+// pipe can end a table cell, and an @mention inside a span notifies nobody.
+func code(name string) string {
+	name = strings.NewReplacer("`", "", "|", "\\|", "\n", " ", "\r", " ").Replace(name)
+	return "`" + name + "`"
+}
+
 // render writes the Markdown report.
 func render(st Stats, repo string) string {
 	var b strings.Builder
@@ -209,7 +216,7 @@ func render(st Stats, repo string) string {
 		return keys[i] < keys[k]
 	})
 	for _, k := range keys[:min(10, len(keys))] {
-		fmt.Fprintf(&b, "| %s | %d |\n", k, st.PerJob[k])
+		fmt.Fprintf(&b, "| %s | %d |\n", code(k), st.PerJob[k])
 	}
 
 	b.WriteString("\n### CI linux job duration\n\n| Event | Jobs | p50 | p90 | Max |\n| --- | ---: | ---: | ---: | ---: |\n")

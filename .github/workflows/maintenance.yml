@@ -19,7 +19,11 @@ permissions:
 jobs:
   audit:
     runs-on: instabox-medium
-    timeout-minutes: 20
+    # The CI health report may wait for the API rate limit to reset (up to
+    # 65 minutes: a week holds about 1900 runs, one jobs call each, and
+    # GITHUB_TOKEN allows 1000 requests an hour). The audit and the report
+    # fit in the rest.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
