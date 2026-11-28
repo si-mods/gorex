@@ -13,6 +13,7 @@ struct PaneCell: Identifiable {
     let rect: CGRect
     let name: String
     let record: PaneRecord?
+    var agentActive: Bool = false
 
     var id: String { block }
 }
@@ -21,14 +22,20 @@ struct PaneCell: Identifiable {
 /// split tree. A leaf the window's panes do not hold is skipped, so the map
 /// and the pane bar always show the same set. Without a tree, the panes go
 /// in a row, as they do before a window is laid out.
-func paneCells(layout: PaneLayout?, panes: [String], name: (String) -> String, record: (String) -> PaneRecord?) -> [PaneCell] {
+func paneCells(
+    layout: PaneLayout?,
+    panes: [String],
+    name: (String) -> String,
+    record: (String) -> PaneRecord?,
+    agentActive: (String) -> Bool = { _ in false }
+) -> [PaneCell] {
     guard !panes.isEmpty else { return [] }
     let held = Set(panes)
     var out: [PaneCell] = []
     func walk(_ n: PaneLayout, _ rect: CGRect) {
         if let block = n.block_id {
             guard held.contains(block) else { return }
-            out.append(PaneCell(block: block, rect: norm(n.rect) ?? rect, name: name(block), record: record(block)))
+            out.append(PaneCell(block: block, rect: norm(n.rect) ?? rect, name: name(block), record: record(block), agentActive: agentActive(block)))
             return
         }
         guard let split = n.split else { return }
@@ -51,7 +58,7 @@ func paneCells(layout: PaneLayout?, panes: [String], name: (String) -> String, r
     guard out.count == panes.count else {
         let n = CGFloat(panes.count)
         return panes.enumerated().map { i, block in
-            PaneCell(block: block, rect: CGRect(x: CGFloat(i) / n, y: 0, width: 1 / n, height: 1), name: name(block), record: record(block))
+            PaneCell(block: block, rect: CGRect(x: CGFloat(i) / n, y: 0, width: 1 / n, height: 1), name: name(block), record: record(block), agentActive: agentActive(block))
         }
     }
     return out

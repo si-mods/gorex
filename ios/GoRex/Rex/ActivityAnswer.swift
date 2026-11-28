@@ -34,6 +34,7 @@ extension Host {
         let answerable = (r["records"] as? [Any] ?? []).compactMap(ProgramStatus.init)
             .contains { TerminalActivity.Record.answerable(state: $0.state, kind: $0.kind) }
         guard answerable else { return }
+        clearAgentLocal(block: block)
         try await c.callBlock("write", session: session, block: block, ["data": action.bytes])
     }
 }

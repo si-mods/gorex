@@ -32,11 +32,14 @@ struct PaneMiniMap: View {
                         .fill(cell.block == current ? AnyShapeStyle(currentColor) : AnyShapeStyle(ink.opacity(0.18)))
                         .overlay {
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .strokeBorder(ink.opacity(cell.block == current ? 0 : 0.08), lineWidth: 0.5)
+                                .strokeBorder(
+                                    cell.agentActive ? AgentHighlight.color(for: scheme) : ink.opacity(cell.block == current ? 0 : 0.08),
+                                    lineWidth: cell.agentActive ? 1.5 : 0.5
+                                )
                         }
                         .frame(width: max(1, r.width - gap), height: max(1, r.height - gap))
                         .offset(x: r.minX + gap / 2, y: r.minY + gap / 2)
-                        .accessibilityLabel(Text(cell.name))
+                        .accessibilityLabel(Text(AgentHighlight.accessibilityLabel(for: cell.name, active: cell.agentActive)))
                         .accessibilityValue(cell.block == current ? Text("Current") : Text(""))
                         .accessibilityAddTraits(.isImage)
                 }
@@ -73,6 +76,7 @@ struct PaneBar: View {
     /// One highlight moves from tile to tile, as the current pane changes.
     @Namespace private var highlight
     @Environment(\.accessibilityReduceMotion) private var still
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         HStack(spacing: 8) {
@@ -91,6 +95,12 @@ struct PaneBar: View {
                                 }
                             }
                             .padding(4)
+                            .overlay {
+                                if cell.agentActive {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(AgentHighlight.color(for: scheme), lineWidth: 1.5)
+                                }
+                            }
                             .background {
                                 if cell.block == current {
                                     // Reduce Motion fades it from tile to
@@ -105,7 +115,7 @@ struct PaneBar: View {
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(Text(cell.name))
+                    .accessibilityLabel(Text(AgentHighlight.accessibilityLabel(for: cell.name, active: cell.agentActive)))
                     .accessibilityValue(cell.block == current ? Text("Current") : Text(""))
                     .accessibilityAddTraits(cell.block == current ? [.isButton, .isSelected] : .isButton)
                     .accessibilityHint(Text("Switch to this pane."))

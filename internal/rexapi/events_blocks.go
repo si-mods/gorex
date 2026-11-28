@@ -19,6 +19,7 @@ type blockWatch struct {
 	bells      int
 	status     string
 	statusIDs  string
+	agentActor string
 	dir        string
 	foreground int
 	program    string
@@ -46,7 +47,8 @@ func (g *Gateway) watchBlocks(m *model) {
 		}
 		if !w.seen {
 			*w = blockWatch{seen: true, title: info.Title, bells: info.Bells, status: statusSignature(&info),
-				statusIDs: statusIDs(info.Statuses), dir: info.Dir, foreground: info.Foreground, program: info.Program,
+				statusIDs: statusIDs(info.Statuses), agentActor: agentActorSignature(&info),
+				dir: info.Dir, foreground: info.Foreground, program: info.Program,
 				exited: info.Exited, code: info.ExitCode}
 			continue
 		}
@@ -80,6 +82,14 @@ func (g *Gateway) watchBlocks(m *model) {
 			w.status = sig
 			w.statusIDs = statusIDs(info.Statuses)
 		}
+		if sig := agentActorSignature(&info); sig != w.agentActor {
+			act := agentActorPayload(&info)
+			if act == nil {
+				act = map[string]any{"createdBy": rex.ActorHuman}
+			}
+			g.emitBlockEvent(b, "agent_actor_changed", map[string]any{"agentActor": act})
+			w.agentActor = sig
+		}
 		if info.Exited && !w.exited {
 			g.emitBlockEvent(b, "child_exited", map[string]any{"exit_code": info.ExitCode})
 		}
@@ -100,6 +110,29 @@ func (m *model) blockBySID(sid string) *mBlock {
 		}
 	}
 	return nil
+}
+
+// agentActorSignature summarizes info.AgentActor so watchBlocks emits
+// agent_actor_changed whenever CLI input arrives or human input takes over.
+func agentActorSignature(info *rex.SessionInfo) string {
+	act := info.AgentActor
+	var b strings.Builder
+	b.WriteString(act.CreatedBy)
+	b.WriteByte(0)
+	b.WriteString(act.LastCLIInputAt.Format(time.RFC3339Nano))
+	b.WriteByte(0)
+	b.WriteString(act.Agent)
+	b.WriteByte(0)
+	if act.Active {
+		b.WriteByte('1')
+	} else {
+		b.WriteByte('0')
+	}
+	b.WriteByte(0)
+	b.WriteString(act.ParentSession)
+	b.WriteByte(0)
+	b.WriteString(act.TookOverAt.Format(time.RFC3339Nano))
+	return b.String()
 }
 
 // statusSignature names the records a program reported, and when they

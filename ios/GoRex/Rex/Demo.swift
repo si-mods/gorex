@@ -113,11 +113,11 @@ enum Demo {
             claude: block("Claude Code", "claude", [
                 .init(id: "claude", state: "blocked", kind: "question", app: "claude",
                       title: "Claude Code", msg: "Apply the patch to Tabs.swift?", updated: now.addingTimeInterval(-120)),
-            ]),
+            ], actor: .init(createdBy: "cli", lastCliInputAt: now.addingTimeInterval(-5), agent: "claude", active: true)),
             dashboard: block("Dashboard", "node", [
                 .init(id: "vite", state: "working", progress: 65, app: "node",
                       title: "Dashboard", msg: "Compiling App.tsx", updated: now.addingTimeInterval(-30)),
-            ]),
+            ], actor: .init(createdBy: "cli", lastCliInputAt: now.addingTimeInterval(-8), agent: "agy", active: true)),
             tests: block("Tests", "swift", [
                 .init(id: "swift-test", state: "done", app: "swift",
                       title: "Tests", msg: "312 tests passed in 4.2s", updated: now.addingTimeInterval(-300)),
@@ -129,11 +129,12 @@ enum Demo {
         ]
     }
 
-    private static func block(_ title: String, _ program: String, _ statuses: [Host.ProgramStatus]) -> Host.Block {
+    private static func block(_ title: String, _ program: String, _ statuses: [Host.ProgramStatus], actor: AgentActor? = nil) -> Host.Block {
         let b = Host.Block()
         b.title = title
         b.program = program
         b.statuses = statuses.isEmpty ? nil : statuses
+        b.agentActor = actor
         return b
     }
 

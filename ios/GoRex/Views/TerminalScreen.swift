@@ -153,6 +153,19 @@ struct TerminalScreen: View {
                     .ignoresSafeArea(.container, edges: .top)
                     .allowsHitTesting(false)
             }
+            .overlay {
+                if width == .regular || paneCount > 1 {
+                    OwnBody {
+                        AgentPaneOutline(
+                            host: host,
+                            block: currentTarget.block,
+                            topInset: 0,
+                            bottomInset: max(0, (hasBar ? KeyBar.height : 0) + composerInset)
+                        )
+                    }
+                }
+            }
+            .modifier(TerminalAgentAccessibility(host: host, target: currentTarget, session: session, paneBlocks: window?.panes ?? []))
             // On iPad or with a hardware keyboard (no KeyBar), show the floating preview.
             .overlay(alignment: .bottom) { if !hasBar, let said { Heard(said: said) { terminal?.stopDictating() } } }
             .overlay { status }
@@ -526,7 +539,8 @@ struct TerminalScreen: View {
             layout: w.layout,
             panes: w.panes,
             name: { host.paneTitle($0, in: w) ?? String(localized: "Terminal") },
-            record: { block in host.status([block]).map { PaneRecord(state: $0.state) } }
+            record: { block in host.status([block]).map { PaneRecord(state: $0.state) } },
+            agentActive: { host.agentState(for: $0) != nil }
         )
     }
 
@@ -1548,6 +1562,30 @@ private struct OwnBody<Content: View>: View {
     var body: some View { content() }
 }
 
+/// Updates the current terminal view's VoiceOver label, posts edge-triggered
+/// takeover announcements, and expires all panes of the window at 60 s in its
+/// own body so OSC title or `lastCliInputAt` changes do not redraw `TerminalScreen`.
+private struct TerminalAgentAccessibility: ViewModifier {
+    let host: Host
+    let target: TerminalTarget
+    let session: TerminalSession?
+    let paneBlocks: [String]
+
+    func body(content: Content) -> some View {
+        let title = TerminalScreen.windowTitle(host: host, target: target).asText
+        let active = host.agentState(for: target.block) != nil
+        let label = AgentHighlight.accessibilityLabel(for: title, active: active)
+        content
+            .onChange(of: label, initial: true) { _, next in
+                session?.accessibilityTitle = next
+            }
+            .onChange(of: session.map(ObjectIdentifier.init), initial: true) { _, _ in
+                session?.accessibilityTitle = label
+            }
+            .modifier(AgentVoiceOverModifier(host: host, block: target.block, extraBlocks: paneBlocks, title: title))
+    }
+}
+
 /// The screen's navigation title, read in the modifier's own body.
 private struct ScreenTitle: ViewModifier {
     let host: Host
@@ -1665,6 +1703,8 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.terminal.paneInset = paneInset
         v.aboveBar = paneInset
         v.terminal.onPage = onPage
+        v.accessibilityElementsHidden = !current
+        v.terminal.isAccessibilityElement = current
         // A pane switched away from gives up the keyboard itself: left to
         // the hit testing turned off, UIKit would give it back as the pane
         // comes back, and a switch never shows the keyboard. With a

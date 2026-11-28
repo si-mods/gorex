@@ -937,6 +937,7 @@ struct WindowRow<Mark: View>: View {
     var body: some View {
         let title = host.title(window)
         let status = host.status([block] + window.panes)
+        let agentActive = host.windowAgentState(window) != nil
         HStack(spacing: 14) {
             ProgramTiles(front: host.blocks[block]?.program, back: window.back.map { host.blocks[$0]?.program }, state: status?.state, plate: plate).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
             Text(title.isEmpty ? " " : title.asText)
@@ -945,7 +946,9 @@ struct WindowRow<Mark: View>: View {
                 .foregroundStyle(.primary.opacity(0.8))
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .accessibilityLabel(Text(AgentHighlight.accessibilityLabel(for: title.asText, active: agentActive)))
             Spacer(minLength: 8)
+            AgentWindowBadge(host: host, window: window)
             // As the desktop's tab: a dot while the program waits for the
             // user or failed, else its progress or animated dots while working.
             ProgramStatusMark(state: status?.state, progress: status?.progress)
@@ -955,6 +958,7 @@ struct WindowRow<Mark: View>: View {
         .padding(.vertical, 11)
         .frame(minHeight: 50)
         .contentShape(Rectangle())
+        .modifier(AgentVoiceOverModifier(host: host, window: window, title: title.asText))
         .overlay(alignment: .bottom) {
             if divider {
                 Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1 / 3).padding(.leading, 16 + tiles + 14)

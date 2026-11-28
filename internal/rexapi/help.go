@@ -23,10 +23,19 @@ var blockEventSchemas = map[string]any{
 		"type":        "object",
 		"description": "The status the programs reported, as com.superlogical.terminal.program_status reports it.",
 		"properties": map[string]any{
-			"records": map[string]any{"type": "array"},
-			"seen_at": map[string]any{"type": "string", "description": "When the latest record a client saw was updated (gorex.see_block); left out before any was."},
+			"records":    map[string]any{"type": "array"},
+			"seen_at":    map[string]any{"type": "string", "description": "When the latest record a client saw was updated (gorex.see_block); left out before any was."},
+			"agentActor": map[string]any{"type": "object", "description": "CLI or delegated agent ownership for the block."},
 		},
 		"required": []string{"records"},
+	},
+	"agent_actor_changed": map[string]any{
+		"type":        "object",
+		"description": "The CLI or delegated agent actor state of the block changed.",
+		"properties": map[string]any{
+			"agentActor": map[string]any{"type": "object", "description": "Current agentActor state."},
+		},
+		"required": []string{"agentActor"},
 	},
 	"child_exited": map[string]any{
 		"type": "object",

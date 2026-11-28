@@ -31,10 +31,24 @@ struct SessionView: Decodable {
     struct Block: Decodable {
         var block_id: String
         var label: String?
+        var agentActor: AgentActor?
 
-        init(block_id: String, label: String? = nil) {
+        init(block_id: String, label: String? = nil, agentActor: AgentActor? = nil) {
             self.block_id = block_id
             self.label = label
+            self.agentActor = agentActor
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case block_id, label, agentActor, agent_actor
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            block_id = try c.decode(String.self, forKey: .block_id)
+            label = try? c.decodeIfPresent(String.self, forKey: .label)
+            agentActor = (try? c.decodeIfPresent(AgentActor.self, forKey: .agentActor))
+                ?? (try? c.decodeIfPresent(AgentActor.self, forKey: .agent_actor))
         }
     }
 

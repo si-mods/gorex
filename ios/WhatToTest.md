@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `what-to-test` step of the `linux` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Agent-driven sessions now show an agent badge in the list and a blue outline on iPad and multi-pane views, respecting Reduce Motion, VoiceOver, and clearing as you type.
 - Writing multiple lines in Composer Mode now expands the message field across the full width above +, mic, and an accent Send button, with smooth scrolling for longer drafts.
 - Composer Mode now uses a compact single-row pill (+, message field, mic, and Send on one line) while keeping More Keys, Hide Keyboard, and Show Key Bar in + and swipe-down.
 - A red failure message now wraps to three lines instead of cutting the reason off, and one for a tab or pane that already closed says so in plain words, with no internal id.
@@ -197,6 +198,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings has a new Notifications row: it shows whether they are on, and turns them on or opens the Settings app for you.
 
 ## zh-Hans
+- 由 agent 操作的会话与分屏现会在列表显示「agent」角标、在 iPad 与多窗格界面显示柔和蓝色描边，支持减弱动态效果静态描边与旁白播报，手动输入即刻清除。
 - Composer 模式输入多行文字时会自动展开为上方全宽编辑区、下方「+」与麦克风及高亮发送按钮的两行卡片，长文本滚动与换行更顺滑。
 - Composer 模式精简为单行胶囊布局（+、输入框、麦克风与发送同处一行），快捷按键、收起键盘与切回传统键栏集成至「+」菜单并保留下滑手势。
 - 红色失败提示现在最多换行显示三行，不再把原因截掉；标签页或分屏已关闭时，提示直接说明它已在电脑上关闭，不再显示内部 id。

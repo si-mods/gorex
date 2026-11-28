@@ -207,9 +207,11 @@ final class ComposerUITests: XCTestCase {
 
             // Sending clears the draft and collapses back to the 48 pt single-row pill.
             sendBtn.tap()
-            let collapsed = app.otherElements.matching(NSPredicate(
-                format: "identifier == 'composer' AND frame.size.height <= 56")).firstMatch
-            XCTAssertTrue(collapsed.waitForExistence(timeout: 5))
+            let collapseDeadline = Date().addingTimeInterval(5)
+            while bar.frame.height > 56, Date() < collapseDeadline {
+                _ = bar.exists
+            }
+            XCTAssertLessThanOrEqual(bar.frame.height, 56)
             shot("composer-collapsed-after-send")
         }
     }

@@ -1,6 +1,36 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@, operated by an agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@，由 agent 操作"
+          }
+        }
+      }
+    },
+    "Agent stopped operating %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 已停止操作 %@"
+          }
+        }
+      }
+    },
+    "You took over %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已接管 %@"
+          }
+        }
+      }
+    },
     "%@ Is a Project Already": {
       "localizations": {
         "zh-Hans": {
